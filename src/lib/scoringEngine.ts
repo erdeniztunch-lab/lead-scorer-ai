@@ -91,6 +91,63 @@ export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
   },
 };
 
+export function mergeScoringConfig(input: Partial<ScoringConfig>): ScoringConfig {
+  return {
+    ...DEFAULT_SCORING_CONFIG,
+    ...input,
+    thresholds: {
+      ...DEFAULT_SCORING_CONFIG.thresholds,
+      ...(input.thresholds ?? {}),
+    },
+    weights: {
+      ...DEFAULT_SCORING_CONFIG.weights,
+      ...(input.weights ?? {}),
+      engagement: {
+        ...DEFAULT_SCORING_CONFIG.weights.engagement,
+        ...(input.weights?.engagement ?? {}),
+      },
+      fit: {
+        ...DEFAULT_SCORING_CONFIG.weights.fit,
+        ...(input.weights?.fit ?? {}),
+      },
+      recency: {
+        ...DEFAULT_SCORING_CONFIG.weights.recency,
+        ...(input.weights?.recency ?? {}),
+      },
+      sourcePrior: {
+        ...DEFAULT_SCORING_CONFIG.weights.sourcePrior,
+        ...(input.weights?.sourcePrior ?? {}),
+      },
+    },
+  };
+}
+
+export function validateScoringConfig(config: ScoringConfig): string | null {
+  if (config.thresholds.hotMin <= config.thresholds.warmMin) {
+    return "hotMin must be greater than warmMin.";
+  }
+  const values = [
+    config.thresholds.hotMin,
+    config.thresholds.warmMin,
+    config.weights.engagement.emailOpensCap,
+    config.weights.engagement.emailClicksCap,
+    config.weights.engagement.pageViewsCap,
+    config.weights.engagement.demoRequestedBonus,
+    config.weights.fit.industryMatch,
+    config.weights.fit.companySizeFit,
+    config.weights.fit.budgetFit,
+    config.weights.recency.within1Day,
+    config.weights.recency.within3Days,
+    config.weights.recency.within7Days,
+    config.weights.recency.older,
+    ...Object.values(config.weights.sourcePrior),
+  ];
+  if (values.some((value) => Number.isNaN(value) || value < -100 || value > 100)) {
+    return "All values must be between -100 and 100.";
+  }
+  return null;
+}
+
 export function deriveTier(score: number, thresholds: ScoringConfig["thresholds"]): Lead["tier"] {
   if (score >= thresholds.hotMin) {
     return "hot";

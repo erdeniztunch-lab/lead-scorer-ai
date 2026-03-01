@@ -50,6 +50,7 @@ export function useLeadImport<TField extends string>({
 }: UseLeadImportOptions<TField>) {
   const [uploadError, setUploadError] = useState("");
   const [uploadStatus, setUploadStatus] = useState("");
+  const [csvContent, setCsvContent] = useState("");
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [mappingSignature, setMappingSignature] = useState("");
@@ -140,9 +141,11 @@ export function useLeadImport<TField extends string>({
     }
 
     try {
-      const parsedRows = parseCsv(await file.text());
+      const content = await file.text();
+      const parsedRows = parseCsv(content);
       if (parsedRows.length === 0) {
         setUploadError("CSV could not be parsed or has no data rows.");
+        setCsvContent("");
         setCsvRows([]);
         setCsvHeaders([]);
         setMappingSignature("");
@@ -157,6 +160,7 @@ export function useLeadImport<TField extends string>({
       const savedTemplate = loadMappingTemplate<TField>(signature);
       const nextTemplates = loadMappingTemplates<TField>(signature);
 
+      setCsvContent(content);
       setCsvRows(parsedRows);
       setCsvHeaders(headers);
       setMappingSignature(signature);
@@ -167,6 +171,7 @@ export function useLeadImport<TField extends string>({
       setUploadStatus(`${file.name} uploaded. ${parsedRows.length} rows detected.`);
     } catch {
       setUploadError("CSV file could not be read.");
+      setCsvContent("");
       setCsvRows([]);
       setCsvHeaders([]);
       setMappingSignature("");
@@ -237,6 +242,7 @@ export function useLeadImport<TField extends string>({
     uploadError,
     uploadStatus,
     csvRows,
+    csvContent,
     csvHeaders,
     mapping,
     templateName,
@@ -255,6 +261,7 @@ export function useLeadImport<TField extends string>({
     handleDeleteTemplate,
     handleCsvFile,
     importRows,
+    setImportIssues,
     setUploadError,
     setUploadStatus,
   };

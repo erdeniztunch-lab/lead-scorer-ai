@@ -1,15 +1,5 @@
-import { useMemo, useState } from "react";
-import {
-  AlertCircle,
-  Download,
-  Linkedin,
-  Mail,
-  Phone,
-  RefreshCcw,
-  Search,
-  Upload,
-  Users,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AlertCircle, Download, Linkedin, Mail, Phone, RefreshCcw, Search, Upload } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,12 +10,10 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { type Lead } from "@/data/mockLeads";
 import { type ImportIssue, useLeadImport } from "@/hooks/useLeadImport";
-import { useLeadScoring } from "@/hooks/useLeadScoring";
 import { type CsvRow } from "@/lib/csv";
-import { formatHoursAverage, formatLift, formatPrecisionAt10 } from "@/lib/leadMetrics";
-import { loadLeadsFromStorage, saveLeadsToStorage } from "@/lib/leadStore";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { apiFetch } from "@/lib/apiClient";
 
 const leadFields = [
   { key: "name", label: "Name", required: true },
@@ -48,60 +36,14 @@ type LeadFieldKey = (typeof leadFields)[number]["key"];
 type WorkMode = "work" | "setup";
 type ScorePreset = "all" | "60" | "70" | "80" | "90" | "custom";
 
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function parseNumber(value: string): number | undefined {
-  const parsed = Number(value.trim());
-  return Number.isFinite(parsed) ? parsed : undefined;
+interface KpiState {
+  totalLeads: number;
+  avgFirstContactHours: number;
+  precisionAt10: number;
+  lift: number;
 }
 
-function parseBoolean(value: string): boolean | undefined {
-  const normalized = value.trim().toLowerCase();
-  if (["true", "yes", "1"].includes(normalized)) return true;
-  if (["false", "no", "0"].includes(normalized)) return false;
-  return undefined;
-}
-
-function buildLeadFromRow(row: CsvRow, mapping: Record<LeadFieldKey, string>, id: number): Lead | null {
-  const name = (row[mapping.name] ?? "").trim();
-  const company = (row[mapping.company] ?? "").trim();
-  const email = (row[mapping.email] ?? "").trim();
-  const source = (row[mapping.source] ?? "").trim() || "Imported CSV";
-  if (!name || !company || !email || !emailRegex.test(email)) return null;
-
-  const legacyScore = Number(row[mapping.score] ?? 0);
-  const now = new Date().toISOString();
-  const breakdown: Lead["scoreBreakdown"] = [{ key: "legacy_score_hint", label: "Legacy score hint", value: Number.isFinite(legacyScore) ? legacyScore : 0 }];
-  const numberInputs: Array<[LeadFieldKey, string]> = [["emailOpens", "input_email_opens"], ["emailClicks", "input_email_clicks"], ["pageViews", "input_page_views"]];
-  numberInputs.forEach(([key, storageKey]) => {
-    if (!mapping[key]) return;
-    const value = parseNumber(row[mapping[key]] ?? "");
-    if (typeof value === "number") breakdown.push({ key: storageKey, label: `CSV ${key}`, value });
-  });
-  const booleanInputs: Array<[LeadFieldKey, string]> = [["demoRequested", "input_demo_requested"], ["industryMatch", "input_industry_match"], ["companySizeFit", "input_company_size_fit"], ["budgetFit", "input_budget_fit"]];
-  booleanInputs.forEach(([key, storageKey]) => {
-    if (!mapping[key]) return;
-    const value = parseBoolean(row[mapping[key]] ?? "");
-    if (typeof value === "boolean") breakdown.push({ key: storageKey, label: `CSV ${key}`, value: value ? 1 : 0 });
-  });
-
-  return {
-    id,
-    rank: id,
-    name,
-    company,
-    score: Number.isFinite(legacyScore) ? Math.round(legacyScore) : 0,
-    tier: "cold",
-    reasons: (row[mapping.reasons] ?? "").split(/[|;,]/).map((item) => item.trim()).filter(Boolean).slice(0, 2),
-    source,
-    lastActivity: (row[mapping.lastActivity] ?? "").trim() || "Imported recently",
-    email,
-    aiExplanation: `${name} from ${company} imported from CSV.`,
-    scoreBreakdown: breakdown,
-    scoredAt: now,
-    scoreVersion: "v0-legacy-import",
-  };
-}
+const emptyLeadBuilder = (_row: CsvRow, _mapping: Record<LeadFieldKey, string>, _id: number): Lead | null => null;
 
 function downloadIssuesCsv(issues: ImportIssue[]) {
   const sanitizeCell = (value: string) => {
@@ -129,17 +71,21 @@ function toClampedScore(value: number): number {
 
 const Dashboard = () => {
   const { toast } = useToast();
-  const { rescore } = useLeadScoring();
   const [mode, setMode] = useState<WorkMode>("work");
-  const [leads, setLeads] = useState<Lead[]>(() => loadLeadsFromStorage());
-  const [applyScoringOnImport, setApplyScoringOnImport] = useState(true);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [kpis, setKpis] = useState<KpiState>({ totalLeads: 0, avgFirstContactHours: 0, precisionAt10: 0, lift: 1 });
+  const [isLoadingLeads, setIsLoadingLeads] = useState(false);
+  const [isLoadingKpis, setIsLoadingKpis] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [tierFilter, setTierFilter] = useState("all");
   const [scorePreset, setScorePreset] = useState<ScorePreset>("all");
   const [customMinScoreInput, setCustomMinScoreInput] = useState("75");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [applyScoringOnImport] = useState(true);
 
-  const importer = useLeadImport<LeadFieldKey>({ leadFields, buildLeadFromRow });
+  const importer = useLeadImport<LeadFieldKey>({ leadFields, buildLeadFromRow: emptyLeadBuilder });
 
   const effectiveMinScore = useMemo(() => {
     if (scorePreset === "all") return 0;
@@ -147,35 +93,103 @@ const Dashboard = () => {
     return Number(scorePreset);
   }, [customMinScoreInput, scorePreset]);
 
-  const filtered = useMemo(() => leads.filter((lead) => {
-    if (search && !`${lead.name} ${lead.company}`.toLowerCase().includes(search.toLowerCase())) return false;
-    if (tierFilter !== "all" && lead.tier !== tierFilter) return false;
-    if (lead.score < effectiveMinScore) return false;
-    return true;
-  }), [effectiveMinScore, leads, search, tierFilter]);
+  const fetchLeads = async () => {
+    setIsLoadingLeads(true);
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: "25",
+      sortBy: "score",
+      sortDir: "desc",
+      minScore: String(effectiveMinScore),
+    });
+    if (search) params.set("search", search);
+    if (tierFilter !== "all") params.set("tier", tierFilter);
 
-  const kpis = useMemo(() => ({
-    total: leads.length,
-    firstContact: formatHoursAverage(leads),
-    precision: formatPrecisionAt10(leads),
-    lift: formatLift(leads),
-  }), [leads]);
-
-  const handleImport = async () => {
-    const result = await importer.importRows();
-    if (result.leads.length === 0) return;
-    const imported = result.leads.map((lead, index) => ({ ...lead, id: index + 1, rank: index + 1 }));
-    const next = rescore(imported, "import").leads;
-    setLeads(next);
-    saveLeadsToStorage(next);
-    setMode("work");
+    const response = await apiFetch(`/api/leads?${params.toString()}`, { method: "GET" });
+    if (!response.ok) {
+      setIsLoadingLeads(false);
+      toast({ title: "Failed to load leads", description: "API request failed." });
+      return;
+    }
+    const payload = (await response.json()) as { items: Lead[]; totalPages: number };
+    setLeads(payload.items ?? []);
+    setTotalPages(payload.totalPages ?? 1);
+    setIsLoadingLeads(false);
   };
 
-  const handleManualRescore = () => {
-    const result = rescore(leads, "manual_rescore");
-    setLeads(result.leads);
-    saveLeadsToStorage(result.leads);
-    toast({ title: "Re-score complete", description: `${result.run.leadCount} leads recalculated.` });
+  const fetchKpis = async () => {
+    setIsLoadingKpis(true);
+    const response = await apiFetch("/api/kpis", { method: "GET" });
+    if (!response.ok) {
+      setIsLoadingKpis(false);
+      return;
+    }
+    const payload = (await response.json()) as KpiState;
+    setKpis(payload);
+    setIsLoadingKpis(false);
+  };
+
+  useEffect(() => {
+    void fetchLeads();
+  }, [page, search, tierFilter, effectiveMinScore]);
+
+  useEffect(() => {
+    void fetchKpis();
+  }, []);
+
+  const handleImport = async () => {
+    if (!importer.csvContent) {
+      importer.setUploadError("Upload a CSV before importing.");
+      return;
+    }
+    if (!importer.requiredFieldsReady) {
+      importer.setUploadError("Complete all required field mappings.");
+      return;
+    }
+    if (importer.hasDuplicateColumnMapping) {
+      importer.setUploadError("Each mapped field must use a different CSV column.");
+      return;
+    }
+
+    const response = await apiFetch("/api/leads/import", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        csvContent: importer.csvContent,
+        mapping: importer.mapping,
+      }),
+    });
+
+    const payload = await response.json();
+    if (!response.ok) {
+      importer.setUploadError(payload?.message ?? "Import request failed.");
+      if (Array.isArray(payload?.issues)) {
+        importer.setImportIssues(payload.issues as ImportIssue[]);
+      }
+      return;
+    }
+
+    importer.setUploadStatus(`${payload.importedCount} lead(s) imported.${payload.skippedCount > 0 ? ` Skipped ${payload.skippedCount} row(s).` : ""}`);
+    toast({
+      title: "Import completed",
+      description: applyScoringOnImport ? "Leads imported and scored via API." : "Leads imported.",
+    });
+    setMode("work");
+    setPage(1);
+    await Promise.all([fetchLeads(), fetchKpis()]);
+  };
+
+  const handleManualRescore = async () => {
+    const response = await apiFetch("/api/scoring/rescore", { method: "POST" });
+    if (!response.ok) {
+      toast({ title: "Re-score failed", description: "API request failed." });
+      return;
+    }
+    const payload = await response.json();
+    toast({ title: "Re-score complete", description: `${payload.rescoredCount} leads recalculated.` });
+    await Promise.all([fetchLeads(), fetchKpis()]);
   };
 
   return (
@@ -192,10 +206,6 @@ const Dashboard = () => {
             <CardHeader><CardTitle className="text-base">CSV Import and Scoring</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               <Input type="file" accept=".csv,text/csv" onChange={importer.handleCsvFile} disabled={importer.isImporting || importer.isParsingFile} />
-              <div className="flex items-center justify-between rounded-md border p-3">
-                <span className="text-sm text-muted-foreground">Apply scoring on import</span>
-                <Switch checked={applyScoringOnImport} onCheckedChange={setApplyScoringOnImport} />
-              </div>
               {importer.uploadStatus && <p className="text-sm text-muted-foreground">{importer.uploadStatus}</p>}
               {importer.uploadError && <p className="inline-flex items-center gap-2 text-sm text-destructive"><AlertCircle className="h-4 w-4" />{importer.uploadError}</p>}
               {importer.csvHeaders.length > 0 && (
@@ -225,14 +235,15 @@ const Dashboard = () => {
         {mode === "work" && (
           <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Total Leads</p><p className="text-2xl font-bold">{kpis.total}</p></CardContent></Card>
-              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Avg First Contact</p><p className="text-2xl font-bold">{kpis.firstContact}</p></CardContent></Card>
-              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Precision@10</p><p className="text-2xl font-bold">{kpis.precision}</p></CardContent></Card>
-              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Lift</p><p className="text-2xl font-bold">{kpis.lift}</p></CardContent></Card>
+              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Total Leads</p><p className="text-2xl font-bold">{isLoadingKpis ? "..." : kpis.totalLeads}</p></CardContent></Card>
+              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Avg First Contact</p><p className="text-2xl font-bold">{isLoadingKpis ? "..." : `${kpis.avgFirstContactHours.toFixed(1)}h`}</p></CardContent></Card>
+              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Precision@10</p><p className="text-2xl font-bold">{isLoadingKpis ? "..." : `${kpis.precisionAt10}%`}</p></CardContent></Card>
+              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Lift</p><p className="text-2xl font-bold">{isLoadingKpis ? "..." : `${kpis.lift.toFixed(1)}x`}</p></CardContent></Card>
             </div>
+
             <div className="flex flex-wrap items-center gap-2">
-              <div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="w-56 pl-8" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-              <Select value={tierFilter} onValueChange={setTierFilter}><SelectTrigger className="w-32"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All tiers</SelectItem><SelectItem value="hot">Hot</SelectItem><SelectItem value="warm">Warm</SelectItem><SelectItem value="cold">Cold</SelectItem></SelectContent></Select>
+              <div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="w-56 pl-8" placeholder="Search" value={search} onChange={(event) => { setPage(1); setSearch(event.target.value); }} /></div>
+              <Select value={tierFilter} onValueChange={(value) => { setPage(1); setTierFilter(value); }}><SelectTrigger className="w-32"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All tiers</SelectItem><SelectItem value="hot">Hot</SelectItem><SelectItem value="warm">Warm</SelectItem><SelectItem value="cold">Cold</SelectItem></SelectContent></Select>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">Score filter</span>
                 <div className="inline-flex rounded-md border p-1">
@@ -244,34 +255,23 @@ const Dashboard = () => {
                     ["90", "90+"],
                     ["custom", "Custom"],
                   ].map(([value, label]) => (
-                    <Button
-                      key={value}
-                      size="sm"
-                      variant={scorePreset === value ? "default" : "ghost"}
-                      className="h-7 px-2 text-xs"
-                      onClick={() => setScorePreset(value as ScorePreset)}
-                    >
+                    <Button key={value} size="sm" variant={scorePreset === value ? "default" : "ghost"} className="h-7 px-2 text-xs" onClick={() => { setPage(1); setScorePreset(value as ScorePreset); }}>
                       {label}
                     </Button>
                   ))}
                 </div>
                 {scorePreset === "custom" && (
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    className="h-8 w-20"
-                    value={customMinScoreInput}
-                    onChange={(event) => setCustomMinScoreInput(event.target.value)}
-                  />
+                  <Input type="number" min={0} max={100} className="h-8 w-20" value={customMinScoreInput} onChange={(event) => { setPage(1); setCustomMinScoreInput(event.target.value); }} />
                 )}
               </div>
             </div>
+
             <Card>
               <Table>
                 <TableHeader><TableRow><TableHead>#</TableHead><TableHead>Name</TableHead><TableHead>Company</TableHead><TableHead>Score</TableHead><TableHead>Tier</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                 <TableBody>
-                  {filtered.map((lead) => (
+                  {isLoadingLeads && <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">Loading leads...</TableCell></TableRow>}
+                  {!isLoadingLeads && leads.map((lead) => (
                     <Collapsible key={lead.id} open={expanded === lead.id} onOpenChange={(isOpen) => setExpanded(isOpen ? lead.id : null)} asChild>
                       <>
                         <CollapsibleTrigger asChild>
@@ -289,10 +289,16 @@ const Dashboard = () => {
                       </>
                     </Collapsible>
                   ))}
-                  {filtered.length === 0 && <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No leads found.</TableCell></TableRow>}
+                  {!isLoadingLeads && leads.length === 0 && <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No leads found.</TableCell></TableRow>}
                 </TableBody>
               </Table>
             </Card>
+
+            <div className="flex items-center justify-between">
+              <Button variant="outline" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>Previous</Button>
+              <p className="text-sm text-muted-foreground">Page {page} / {totalPages}</p>
+              <Button variant="outline" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>Next</Button>
+            </div>
           </>
         )}
       </div>
