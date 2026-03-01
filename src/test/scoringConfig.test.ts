@@ -4,6 +4,7 @@ import { DEFAULT_SCORING_CONFIG, mergeScoringConfig, validateScoringConfig } fro
 describe("scoring config helpers", () => {
   it("merges partial config into defaults", () => {
     const merged = mergeScoringConfig({
+      preset: "conservative",
       thresholds: { hotMin: 85, warmMin: 65 },
       weights: { fit: { budgetFit: 20 } as never },
     });
@@ -12,6 +13,13 @@ describe("scoring config helpers", () => {
     expect(merged.thresholds.warmMin).toBe(65);
     expect(merged.weights.fit.budgetFit).toBe(20);
     expect(merged.weights.fit.industryMatch).toBe(DEFAULT_SCORING_CONFIG.weights.fit.industryMatch);
+    expect(merged.preset).toBe("conservative");
+  });
+
+  it("applies aggressive preset defaults", () => {
+    const merged = mergeScoringConfig({ preset: "aggressive" });
+    expect(merged.thresholds.hotMin).toBe(75);
+    expect(merged.thresholds.warmMin).toBe(55);
   });
 
   it("rejects invalid thresholds", () => {

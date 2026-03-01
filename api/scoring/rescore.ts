@@ -37,6 +37,7 @@ const handler = withApiHandler(
 
     const now = new Date().toISOString();
     let totalScore = 0;
+    const tierCounts = { hot: 0, warm: 0, cold: 0 };
 
     for (const lead of leads ?? []) {
       const scored = scoreLeadWithConfig({
@@ -46,14 +47,19 @@ const handler = withApiHandler(
         lastActivity: String(lead.last_activity ?? "Imported recently"),
       }, config);
       totalScore += scored.score;
+      if (scored.tier === "hot") tierCounts.hot += 1;
+      else if (scored.tier === "warm") tierCounts.warm += 1;
+      else tierCounts.cold += 1;
 
       const { error: updateError } = await auth.db
         .from("leads")
         .update({
           score: scored.score,
           tier: scored.tier,
-          reasons: scored.reasons,
+          reasons: scored.topReasons,
+          top_reasons: scored.topReasons,
           ai_explanation: scored.aiExplanation,
+          score_breakdown: scored.scoreBreakdown,
           scored_at: now,
           score_version: config.version,
         })
@@ -75,6 +81,7 @@ const handler = withApiHandler(
       config_version: config.version,
       lead_count: leadCount,
       average_score: averageScore,
+      tier_counts: tierCounts,
       completed_at: now,
     });
 

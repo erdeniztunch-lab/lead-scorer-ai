@@ -24,10 +24,11 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon" className="border-r">
+    <Sidebar collapsible="icon" className="border-r bg-sidebar">
       <SidebarContent className="bg-sidebar">
         <div className="border-b border-sidebar-border p-4">
-          <span className="text-base font-bold text-sidebar-foreground">
+          <p className="text-[11px] uppercase tracking-[0.14em] text-sidebar-foreground/60">Workspace</p>
+          <span className="mt-1 inline-block text-base font-bold text-sidebar-foreground">
             Lead<span className="text-sidebar-primary">Scorer</span>
           </span>
         </div>
@@ -69,8 +70,8 @@ export function AppSidebar() {
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium text-sidebar-foreground">{guestMode ? "Guest Session" : "Jane Doe"}</div>
-              <div className="truncate text-xs text-sidebar-foreground/60">{guestMode ? "Not persisted" : "jane@company.com"}</div>
+              <div className="truncate text-sm font-medium text-sidebar-foreground">{guestMode ? "Guest Session" : "Workspace User"}</div>
+              <div className="truncate text-xs text-sidebar-foreground/60">{guestMode ? "Session-only data" : "Authenticated session"}</div>
             </div>
             <Button
               variant="ghost"

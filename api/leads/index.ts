@@ -4,6 +4,7 @@ import { resolveAuthContext } from "../_lib/authContext";
 import { getQueryNumber, getQueryValue } from "../_lib/query";
 
 const allowedSortFields = new Set(["score", "created_at", "name", "company", "source", "last_activity"]);
+const allowedQualityProfiles = new Set(["all", "high_intent", "balanced_pipeline", "volume_mode"]);
 
 const handler = withApiHandler(
   {
@@ -21,16 +22,31 @@ const handler = withApiHandler(
     const source = getQueryValue(req, "source").trim();
     const tier = getQueryValue(req, "tier").trim();
     const minScore = Math.max(0, Math.min(100, getQueryNumber(req, "minScore", 0)));
+    const qualityProfileRaw = getQueryValue(req, "qualityProfile").trim().toLowerCase() || "all";
+    const qualityProfile = allowedQualityProfiles.has(qualityProfileRaw) ? qualityProfileRaw : "all";
     const sortByRaw = getQueryValue(req, "sortBy").trim() || "score";
     const sortBy = allowedSortFields.has(sortByRaw) ? sortByRaw : "score";
     const sortDirRaw = getQueryValue(req, "sortDir").trim().toLowerCase();
     const ascending = sortDirRaw === "asc";
 
+    let profileMinScore = 0;
+    let profileTierFilter: "hot" | "warm" | null = null;
+    if (qualityProfile === "high_intent") {
+      profileTierFilter = "hot";
+    } else if (qualityProfile === "balanced_pipeline") {
+      profileTierFilter = "warm";
+    } else if (qualityProfile === "volume_mode") {
+      profileMinScore = 40;
+    }
+
     let query = auth.db
       .from("leads")
-      .select("id,name,company,email,source,score,tier,reasons,last_activity,ai_explanation,scored_at,score_version,created_at", { count: "exact" })
+      .select(
+        "id,name,company,email,source,score,tier,reasons,top_reasons,last_activity,ai_explanation,score_breakdown,scored_at,score_version,created_at",
+        { count: "exact" },
+      )
       .eq("account_id", auth.accountId)
-      .gte("score", minScore);
+      .gte("score", Math.max(minScore, profileMinScore));
 
     if (search) {
       query = query.or(`name.ilike.%${search}%,company.ilike.%${search}%`);
@@ -40,6 +56,10 @@ const handler = withApiHandler(
     }
     if (tier && tier !== "all") {
       query = query.eq("tier", tier);
+    } else if (profileTierFilter === "hot") {
+      query = query.eq("tier", "hot");
+    } else if (profileTierFilter === "warm") {
+      query = query.in("tier", ["hot", "warm"]);
     }
 
     query = query.order(sortBy, { ascending }).range((page - 1) * pageSize, page * pageSize - 1);
@@ -59,12 +79,15 @@ const handler = withApiHandler(
       source: String(row.source ?? ""),
       score: Number(row.score ?? 0),
       tier: row.tier ?? "cold",
-      reasons: Array.isArray(row.reasons) ? (row.reasons as string[]) : [],
+      reasons: Array.isArray(row.top_reasons) ? (row.top_reasons as string[]) : Array.isArray(row.reasons) ? (row.reasons as string[]) : [],
+      topReasons: Array.isArray(row.top_reasons) ? (row.top_reasons as string[]) : [],
       lastActivity: String(row.last_activity ?? "Imported recently"),
       aiExplanation: String(row.ai_explanation ?? ""),
       scoredAt: String(row.scored_at ?? ""),
       scoreVersion: String(row.score_version ?? ""),
-      scoreBreakdown: [] as Array<{ key: string; label: string; value: number }>,
+      scoreBreakdown: Array.isArray(row.score_breakdown)
+        ? (row.score_breakdown as Array<{ key: string; label: string; value: number }>)
+        : ([] as Array<{ key: string; label: string; value: number }>),
     }));
 
     const total = count ?? 0;

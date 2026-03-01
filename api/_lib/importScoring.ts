@@ -8,11 +8,28 @@ export interface ImportLeadOutput {
   score: number;
   tier: "hot" | "warm" | "cold";
   reasons: string[];
+  topReasons: string[];
   lastActivity: string;
   aiExplanation: string;
   scoreBreakdown: Array<{ key: string; label: string; value: number }>;
   scoreVersion: string;
   scoredAt: string;
+}
+
+const SIGNAL_LABELS: Record<string, string> = {
+  email_opens: "Frequent email opens",
+  email_clicks: "Clicked outreach links",
+  page_views: "High website activity",
+  demo_requested: "Requested a demo",
+  industry_match: "Strong ICP industry fit",
+  company_size_fit: "Company size matches ICP",
+  budget_fit: "Budget fit signal",
+  recency: "Recent activity",
+  source_prior: "Source quality signal",
+};
+
+function labelForSignal(key: string, fallback: string): string {
+  return SIGNAL_LABELS[key] ?? fallback;
 }
 
 function parseBoolean(value: string): boolean | null {
@@ -62,20 +79,20 @@ export function scoreFromImport(row: CsvRow, mapping: Record<string, string>): I
   const budgetFit = parseBoolean(row[mapping.budgetFit] ?? "") ?? false;
 
   const contributions: Array<{ key: string; label: string; value: number }> = [];
-  contributions.push({ key: "email_opens", label: "Email opens", value: Math.min(emailOpens * 2, 10) });
-  contributions.push({ key: "email_clicks", label: "Email clicks", value: Math.min(emailClicks * 4, 12) });
-  contributions.push({ key: "page_views", label: "High page views", value: Math.min(pageViews, 10) });
-  contributions.push({ key: "demo_requested", label: "Demo requested", value: demoRequested ? 8 : 0 });
-  contributions.push({ key: "industry_match", label: "Industry match", value: industryMatch ? 15 : 0 });
-  contributions.push({ key: "company_size_fit", label: "Company size fit", value: companySizeFit ? 10 : 0 });
-  contributions.push({ key: "budget_fit", label: "Budget fit", value: budgetFit ? 10 : 0 });
+  contributions.push({ key: "email_opens", label: labelForSignal("email_opens", "Email opens"), value: Math.min(emailOpens * 2, 10) });
+  contributions.push({ key: "email_clicks", label: labelForSignal("email_clicks", "Email clicks"), value: Math.min(emailClicks * 4, 12) });
+  contributions.push({ key: "page_views", label: labelForSignal("page_views", "High page views"), value: Math.min(pageViews, 10) });
+  contributions.push({ key: "demo_requested", label: labelForSignal("demo_requested", "Demo requested"), value: demoRequested ? 8 : 0 });
+  contributions.push({ key: "industry_match", label: labelForSignal("industry_match", "Industry match"), value: industryMatch ? 15 : 0 });
+  contributions.push({ key: "company_size_fit", label: labelForSignal("company_size_fit", "Company size fit"), value: companySizeFit ? 10 : 0 });
+  contributions.push({ key: "budget_fit", label: labelForSignal("budget_fit", "Budget fit"), value: budgetFit ? 10 : 0 });
 
   const days = parseLastActivityDays(lastActivity);
   let recencyValue = 2;
   if (days <= 1) recencyValue = 15;
   else if (days <= 3) recencyValue = 10;
   else if (days <= 7) recencyValue = 6;
-  contributions.push({ key: "recency", label: "Recent activity", value: recencyValue });
+  contributions.push({ key: "recency", label: labelForSignal("recency", "Recent activity"), value: recencyValue });
 
   const sourcePriorMap: Record<string, number> = {
     referral: 10,
@@ -87,19 +104,19 @@ export function scoreFromImport(row: CsvRow, mapping: Record<string, string>): I
   };
   contributions.push({
     key: "source_prior",
-    label: "Source quality",
+    label: labelForSignal("source_prior", "Source quality"),
     value: sourcePriorMap[source.toLowerCase()] ?? 0,
   });
 
   const rawScore = contributions.reduce((sum, item) => sum + item.value, 0);
   const score = Math.max(0, Math.min(100, Math.round(rawScore)));
   const tier = deriveTier(score);
-  const reasons = contributions
+  const topReasons = contributions
     .filter((item) => item.value > 0)
     .sort((a, b) => b.value - a.value)
     .slice(0, 2)
     .map((item) => item.label);
-  const reasonText = reasons.length > 0 ? reasons.join(" and ") : "baseline profile signals";
+  const reasonText = topReasons.length > 0 ? topReasons.join(" and ") : "baseline profile signals";
   const aiExplanation = `${name} at ${company} is ranked as ${tier.toUpperCase()} based on ${reasonText}. Prioritize follow-up according to this signal mix.`;
 
   return {
@@ -109,7 +126,8 @@ export function scoreFromImport(row: CsvRow, mapping: Record<string, string>): I
     source,
     score,
     tier,
-    reasons,
+    reasons: topReasons,
+    topReasons,
     lastActivity,
     aiExplanation,
     scoreBreakdown: contributions,

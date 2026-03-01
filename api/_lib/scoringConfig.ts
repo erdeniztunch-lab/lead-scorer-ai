@@ -1,4 +1,5 @@
 export interface ScoringConfig {
+  preset: "conservative" | "balanced" | "aggressive";
   version: string;
   thresholds: {
     hotMin: number;
@@ -27,6 +28,7 @@ export interface ScoringConfig {
 }
 
 export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
+  preset: "balanced",
   version: "v1.0.0",
   thresholds: {
     hotMin: 80,
@@ -61,31 +63,74 @@ export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
   },
 };
 
+function buildConfigForPreset(preset: ScoringConfig["preset"]): ScoringConfig {
+  if (preset === "conservative") {
+    return {
+      ...DEFAULT_SCORING_CONFIG,
+      preset,
+      thresholds: {
+        hotMin: 85,
+        warmMin: 70,
+      },
+      weights: {
+        ...DEFAULT_SCORING_CONFIG.weights,
+        engagement: {
+          ...DEFAULT_SCORING_CONFIG.weights.engagement,
+          emailOpensCap: 12,
+          emailClicksCap: 14,
+        },
+      },
+    };
+  }
+  if (preset === "aggressive") {
+    return {
+      ...DEFAULT_SCORING_CONFIG,
+      preset,
+      thresholds: {
+        hotMin: 75,
+        warmMin: 55,
+      },
+      weights: {
+        ...DEFAULT_SCORING_CONFIG.weights,
+        fit: {
+          ...DEFAULT_SCORING_CONFIG.weights.fit,
+          industryMatch: 13,
+          companySizeFit: 9,
+        },
+      },
+    };
+  }
+  return { ...DEFAULT_SCORING_CONFIG, preset: "balanced" };
+}
+
 export function mergeScoringConfig(input: Partial<ScoringConfig>): ScoringConfig {
+  const preset = input.preset ?? DEFAULT_SCORING_CONFIG.preset;
+  const presetBase = buildConfigForPreset(preset);
   return {
-    ...DEFAULT_SCORING_CONFIG,
+    ...presetBase,
     ...input,
+    preset,
     thresholds: {
-      ...DEFAULT_SCORING_CONFIG.thresholds,
+      ...presetBase.thresholds,
       ...(input.thresholds ?? {}),
     },
     weights: {
-      ...DEFAULT_SCORING_CONFIG.weights,
+      ...presetBase.weights,
       ...(input.weights ?? {}),
       engagement: {
-        ...DEFAULT_SCORING_CONFIG.weights.engagement,
+        ...presetBase.weights.engagement,
         ...(input.weights?.engagement ?? {}),
       },
       fit: {
-        ...DEFAULT_SCORING_CONFIG.weights.fit,
+        ...presetBase.weights.fit,
         ...(input.weights?.fit ?? {}),
       },
       recency: {
-        ...DEFAULT_SCORING_CONFIG.weights.recency,
+        ...presetBase.weights.recency,
         ...(input.weights?.recency ?? {}),
       },
       sourcePrior: {
-        ...DEFAULT_SCORING_CONFIG.weights.sourcePrior,
+        ...presetBase.weights.sourcePrior,
         ...(input.weights?.sourcePrior ?? {}),
       },
     },

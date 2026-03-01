@@ -1,18 +1,24 @@
 export function SiteFooter() {
   return (
-    <footer className="border-t bg-card/90">
-      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-7 sm:flex-row">
-        <span className="text-sm font-semibold tracking-tight text-primary">
-          LeadScorer<span className="text-accent">.ai</span>
-        </span>
-        <div className="flex items-center gap-6 text-sm text-muted-foreground">
-          <a href="#" className="transition-colors hover:text-foreground">
+    <footer className="border-t bg-card/90 footer-sheen">
+      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-5 px-6 py-7 sm:flex-row">
+        <div className="text-center sm:text-left">
+          <span className="text-sm font-semibold tracking-tight text-primary">
+            LeadScorer<span className="text-accent">.ai</span>
+          </span>
+          <p className="mt-1 text-xs text-muted-foreground">Built for small sales teams with limited time.</p>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-2 text-sm text-muted-foreground sm:justify-end sm:gap-3">
+          <a href="/privacy" className="rounded-md px-2 py-1.5 transition-colors hover:bg-background/70 hover:text-foreground">
             Privacy
           </a>
-          <a href="#" className="transition-colors hover:text-foreground">
+          <a href="/terms" className="rounded-md px-2 py-1.5 transition-colors hover:bg-background/70 hover:text-foreground">
             Terms
           </a>
-          <a href="#" className="transition-colors hover:text-foreground">
+          <a
+            href="mailto:founders@leadscorer.ai"
+            className="rounded-md px-2 py-1.5 transition-colors hover:bg-background/70 hover:text-foreground"
+          >
             Contact
           </a>
         </div>

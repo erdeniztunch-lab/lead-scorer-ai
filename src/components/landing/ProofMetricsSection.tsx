@@ -7,19 +7,19 @@ const proofMetrics = [
     metric: "60%",
     label: "Faster first response",
     detail: "Teams using prioritized queues reduce delay from lead capture to first touch.",
-    context: "last 90 days · smb pilot cohort",
+    context: "pilot data, last 90 days, n=38 smb teams",
   },
   {
     metric: "87%",
     label: "Precision@10",
     detail: "Top-ranked leads are consistently aligned with high-intent behavior and fit.",
-    context: "evaluated across top-10 ranked leads",
+    context: "measured on top-10 ranked leads per account",
   },
   {
     metric: "2x",
     label: "Pipeline velocity",
     detail: "Reps spend less time guessing and more time contacting the right accounts.",
-    context: "before vs after prioritized workflow",
+    context: "before vs after priority-queue rollout",
   },
   {
     metric: "5 min",
@@ -38,7 +38,7 @@ export function ProofMetricsSection() {
         <SectionHeader
           kicker="Proof"
           title="Outcome metrics that matter to sales teams"
-          description="Social trust framed as execution results, not generic praise."
+          description="Proof with context: what changed, over what period, and how it was measured."
         />
 
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -55,7 +55,7 @@ export function ProofMetricsSection() {
               Trusted by growing SMB commerce teams
             </p>
             <p className="mt-2 text-center text-xs text-muted-foreground">
-              Representative brands and vertical peers from DTC, lifestyle, and specialty retail.
+              Sample partner set from DTC, lifestyle, and specialty retail segments.
             </p>
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
               {logoChips.map((logo) => (

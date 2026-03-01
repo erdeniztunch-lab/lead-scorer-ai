@@ -6,23 +6,21 @@ const steps = [
   {
     step: "01",
     title: "Upload",
-    description:
-      "Drop your CSV of leads or connect your CRM. Supports HubSpot, Salesforce, and Shopify.",
-    microProof: "Maps required fields in under 2 minutes",
+    description: "Upload a CSV and map required fields in minutes.",
+    microProof: "CSV-first workflow is live now; CRM integrations are on roadmap",
     icon: Upload,
   },
   {
     step: "02",
     title: "Score",
-    description:
-      "AI ranks leads by purchase intent, engagement signals, and fit with your ideal customer profile.",
+    description: "Leads are ranked by intent, engagement, and ICP fit.",
     microProof: "Reason codes make every score explainable",
     icon: BarChart3,
   },
   {
     step: "03",
     title: "Act",
-    description: "Contact top leads first with one-click email, call, or LinkedIn outreach.",
+    description: "Work top-ranked leads first with one-click actions.",
     microProof: "Prioritized queue keeps reps focused on highest-value opportunities",
     icon: Zap,
   },
@@ -31,11 +29,11 @@ const steps = [
 export function HowItWorksStorySection() {
   return (
     <section id="how-it-works" className="surface-soft border-y">
-      <div className="mx-auto max-w-6xl px-6 py-20">
+      <div className="mx-auto max-w-6xl px-6 py-24">
         <SectionHeader
           kicker="Workflow"
           title="From inbound noise to a ranked, actionable pipeline"
-          description="The same 3-step model, reframed as a clear operating rhythm your team can execute every day."
+          description="No setup calls, no complex onboarding. A simple operating rhythm your team can run daily."
         />
 
         <div className="mt-12 grid gap-6 md:grid-cols-[120px_minmax(0,1fr)]">

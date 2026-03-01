@@ -18,6 +18,7 @@ export interface LeadFieldDefinition {
 }
 
 export interface ImportIssue {
+  type?: string;
   rowNumber: number;
   reason: string;
   name: string;

@@ -12,6 +12,7 @@ export type Lead = {
   score: number;
   tier: "hot" | "warm" | "cold";
   reasons: string[];
+  topReasons?: string[];
   source: string;
   lastActivity: string;
   email: string;
@@ -142,6 +143,7 @@ const initialScoredAt = new Date().toISOString();
 
 export const mockLeads: Lead[] = baseLeads.map((lead) => ({
   ...lead,
+  topReasons: lead.reasons,
   scoreBreakdown: [
     { key: "legacy_score", label: "Legacy score seed", value: lead.score },
     { key: "legacy_signal", label: "Historical reason signal", value: 0 },

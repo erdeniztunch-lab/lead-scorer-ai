@@ -47,6 +47,7 @@ describe("scoringEngine", () => {
     );
     expect(result.topReasons.length).toBe(2);
     expect(result.topReasons[0]).not.toBe("");
+    expect(result.topReasons.some((reason) => reason.includes("Clicked outreach links"))).toBe(true);
   });
 
   it("clamps score into 0..100", () => {

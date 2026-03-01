@@ -21,6 +21,7 @@ export interface ScoreContribution {
 }
 
 export interface ScoringConfig {
+  preset: "conservative" | "balanced" | "aggressive";
   version: string;
   thresholds: {
     hotMin: number;
@@ -56,7 +57,24 @@ export interface ScoreResult {
   explanation: string;
 }
 
+const SIGNAL_LABELS: Record<string, string> = {
+  email_opens: "Frequent email opens",
+  email_clicks: "Clicked outreach links",
+  page_views: "High website activity",
+  demo_requested: "Requested a demo",
+  industry_match: "Strong ICP industry fit",
+  company_size_fit: "Company size matches ICP",
+  budget_fit: "Budget fit signal",
+  recency: "Recent activity",
+  source_prior: "Source quality signal",
+};
+
+function labelForSignal(key: string, fallback: string): string {
+  return SIGNAL_LABELS[key] ?? fallback;
+}
+
 export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
+  preset: "balanced",
   version: "v1.0.0",
   thresholds: {
     hotMin: 80,
@@ -91,31 +109,74 @@ export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
   },
 };
 
+function buildConfigForPreset(preset: ScoringConfig["preset"]): ScoringConfig {
+  if (preset === "conservative") {
+    return {
+      ...DEFAULT_SCORING_CONFIG,
+      preset,
+      thresholds: {
+        hotMin: 85,
+        warmMin: 70,
+      },
+      weights: {
+        ...DEFAULT_SCORING_CONFIG.weights,
+        engagement: {
+          ...DEFAULT_SCORING_CONFIG.weights.engagement,
+          emailOpensCap: 12,
+          emailClicksCap: 14,
+        },
+      },
+    };
+  }
+  if (preset === "aggressive") {
+    return {
+      ...DEFAULT_SCORING_CONFIG,
+      preset,
+      thresholds: {
+        hotMin: 75,
+        warmMin: 55,
+      },
+      weights: {
+        ...DEFAULT_SCORING_CONFIG.weights,
+        fit: {
+          ...DEFAULT_SCORING_CONFIG.weights.fit,
+          industryMatch: 13,
+          companySizeFit: 9,
+        },
+      },
+    };
+  }
+  return { ...DEFAULT_SCORING_CONFIG, preset: "balanced" };
+}
+
 export function mergeScoringConfig(input: Partial<ScoringConfig>): ScoringConfig {
+  const preset = input.preset ?? DEFAULT_SCORING_CONFIG.preset;
+  const presetBase = buildConfigForPreset(preset);
   return {
-    ...DEFAULT_SCORING_CONFIG,
+    ...presetBase,
     ...input,
+    preset,
     thresholds: {
-      ...DEFAULT_SCORING_CONFIG.thresholds,
+      ...presetBase.thresholds,
       ...(input.thresholds ?? {}),
     },
     weights: {
-      ...DEFAULT_SCORING_CONFIG.weights,
+      ...presetBase.weights,
       ...(input.weights ?? {}),
       engagement: {
-        ...DEFAULT_SCORING_CONFIG.weights.engagement,
+        ...presetBase.weights.engagement,
         ...(input.weights?.engagement ?? {}),
       },
       fit: {
-        ...DEFAULT_SCORING_CONFIG.weights.fit,
+        ...presetBase.weights.fit,
         ...(input.weights?.fit ?? {}),
       },
       recency: {
-        ...DEFAULT_SCORING_CONFIG.weights.recency,
+        ...presetBase.weights.recency,
         ...(input.weights?.recency ?? {}),
       },
       sourcePrior: {
-        ...DEFAULT_SCORING_CONFIG.weights.sourcePrior,
+        ...presetBase.weights.sourcePrior,
         ...(input.weights?.sourcePrior ?? {}),
       },
     },
@@ -292,33 +353,33 @@ export function scoreLead(input: SignalInput, config: ScoringConfig): ScoreResul
   const contributions: ScoreContribution[] = [];
 
   const emailOpens = Math.min((input.emailOpens ?? 0) * 2, config.weights.engagement.emailOpensCap);
-  contributions.push({ key: "email_opens", label: "Email opens", value: emailOpens });
+  contributions.push({ key: "email_opens", label: labelForSignal("email_opens", "Email opens"), value: emailOpens });
 
   const emailClicks = Math.min((input.emailClicks ?? 0) * 4, config.weights.engagement.emailClicksCap);
-  contributions.push({ key: "email_clicks", label: "Email clicks", value: emailClicks });
+  contributions.push({ key: "email_clicks", label: labelForSignal("email_clicks", "Email clicks"), value: emailClicks });
 
   const pageViews = Math.min(input.pageViews ?? 0, config.weights.engagement.pageViewsCap);
-  contributions.push({ key: "page_views", label: "High page views", value: pageViews });
+  contributions.push({ key: "page_views", label: labelForSignal("page_views", "High page views"), value: pageViews });
 
   contributions.push({
     key: "demo_requested",
-    label: "Demo requested",
+    label: labelForSignal("demo_requested", "Demo requested"),
     value: input.demoRequested ? config.weights.engagement.demoRequestedBonus : 0,
   });
 
   contributions.push({
     key: "industry_match",
-    label: "Industry match",
+    label: labelForSignal("industry_match", "Industry match"),
     value: input.industryMatch ? config.weights.fit.industryMatch : 0,
   });
   contributions.push({
     key: "company_size_fit",
-    label: "Company size fit",
+    label: labelForSignal("company_size_fit", "Company size fit"),
     value: input.companySizeFit ? config.weights.fit.companySizeFit : 0,
   });
   contributions.push({
     key: "budget_fit",
-    label: "Budget fit",
+    label: labelForSignal("budget_fit", "Budget fit"),
     value: input.budgetFit ? config.weights.fit.budgetFit : 0,
   });
 
@@ -331,11 +392,11 @@ export function scoreLead(input: SignalInput, config: ScoringConfig): ScoreResul
   } else if (days <= 7) {
     recencyScore = config.weights.recency.within7Days;
   }
-  contributions.push({ key: "recency", label: "Recent activity", value: recencyScore });
+  contributions.push({ key: "recency", label: labelForSignal("recency", "Recent activity"), value: recencyScore });
 
   const sourceKey = input.source.trim().toLowerCase();
   const sourceValue = config.weights.sourcePrior[sourceKey] ?? 0;
-  contributions.push({ key: "source_prior", label: "Source quality", value: sourceValue });
+  contributions.push({ key: "source_prior", label: labelForSignal("source_prior", "Source quality"), value: sourceValue });
 
   const rawScore = contributions.reduce((sum, part) => sum + part.value, 0);
   const score = Math.max(0, Math.min(100, Math.round(rawScore)));
@@ -359,6 +420,7 @@ export function scoreLeads(leads: Lead[], config: ScoringConfig): Lead[] {
         score: result.score,
         tier: result.tier,
         reasons: result.topReasons,
+        topReasons: result.topReasons,
         aiExplanation: result.explanation,
         scoreBreakdown: result.contributions.map((item) => ({
           key: item.key,
