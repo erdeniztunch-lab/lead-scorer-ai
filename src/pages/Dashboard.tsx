@@ -6,11 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { type Lead } from "@/data/mockLeads";
+import { mockLeads, type Lead } from "@/data/mockLeads";
 import { type ImportIssue, useLeadImport } from "@/hooks/useLeadImport";
-import { type CsvRow } from "@/lib/csv";
+import { DEFAULT_SCORING_CONFIG, scoreLead, scoreLeads } from "@/lib/scoringEngine";
+import { isGuestSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/apiClient";
@@ -43,8 +43,6 @@ interface KpiState {
   lift: number;
 }
 
-const emptyLeadBuilder = (_row: CsvRow, _mapping: Record<LeadFieldKey, string>, _id: number): Lead | null => null;
-
 function downloadIssuesCsv(issues: ImportIssue[]) {
   const sanitizeCell = (value: string) => {
     const normalized = value.replace(/"/g, "\"\"");
@@ -69,10 +67,46 @@ function toClampedScore(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
+function parseNumber(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const numeric = Number(value);
+  if (Number.isNaN(numeric) || !Number.isFinite(numeric)) return undefined;
+  return numeric;
+}
+
+function parseBoolean(value: string | undefined): boolean | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (["true", "yes", "y", "1"].includes(normalized)) return true;
+  if (["false", "no", "n", "0"].includes(normalized)) return false;
+  return undefined;
+}
+
+function buildGuestKpis(items: Lead[]): KpiState {
+  if (items.length === 0) {
+    return { totalLeads: 0, avgFirstContactHours: 0, precisionAt10: 0, lift: 1 };
+  }
+  const top10 = items.slice(0, 10);
+  const hotTop10 = top10.filter((lead) => lead.tier === "hot").length;
+  const precisionAt10 = Math.round((hotTop10 / Math.max(1, top10.length)) * 100);
+  const hotRate = items.filter((lead) => lead.tier === "hot").length / items.length;
+  const lift = Number((1 + hotRate * 3).toFixed(1));
+  const avgFirstContactHours = Number((2 + (100 - Math.min(100, items[0]?.score ?? 0)) / 40).toFixed(1));
+
+  return {
+    totalLeads: items.length,
+    avgFirstContactHours,
+    precisionAt10,
+    lift,
+  };
+}
+
 const Dashboard = () => {
   const { toast } = useToast();
+  const guestMode = isGuestSession();
   const [mode, setMode] = useState<WorkMode>("work");
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [guestLeads, setGuestLeads] = useState<Lead[]>(() => scoreLeads(mockLeads, DEFAULT_SCORING_CONFIG));
   const [kpis, setKpis] = useState<KpiState>({ totalLeads: 0, avgFirstContactHours: 0, precisionAt10: 0, lift: 1 });
   const [isLoadingLeads, setIsLoadingLeads] = useState(false);
   const [isLoadingKpis, setIsLoadingKpis] = useState(false);
@@ -85,7 +119,48 @@ const Dashboard = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [applyScoringOnImport] = useState(true);
 
-  const importer = useLeadImport<LeadFieldKey>({ leadFields, buildLeadFromRow: emptyLeadBuilder });
+  const importer = useLeadImport<LeadFieldKey>({
+    leadFields,
+    buildLeadFromRow: (row, mapping, id) => {
+      const name = (row[mapping.name] ?? "").trim();
+      const company = (row[mapping.company] ?? "").trim();
+      const email = (row[mapping.email] ?? "").trim().toLowerCase();
+      const source = (row[mapping.source] ?? "Website").trim() || "Website";
+      const lastActivity = (row[mapping.lastActivity] ?? "7 days ago").trim() || "7 days ago";
+      const result = scoreLead(
+        {
+          name,
+          company,
+          source,
+          lastActivity,
+          emailOpens: parseNumber(row[mapping.emailOpens]),
+          emailClicks: parseNumber(row[mapping.emailClicks]),
+          pageViews: parseNumber(row[mapping.pageViews]),
+          demoRequested: parseBoolean(row[mapping.demoRequested]),
+          industryMatch: parseBoolean(row[mapping.industryMatch]),
+          companySizeFit: parseBoolean(row[mapping.companySizeFit]),
+          budgetFit: parseBoolean(row[mapping.budgetFit]),
+        },
+        DEFAULT_SCORING_CONFIG,
+      );
+      return {
+        id,
+        rank: id,
+        name,
+        company,
+        email,
+        source,
+        score: result.score,
+        tier: result.tier,
+        reasons: result.topReasons,
+        lastActivity,
+        aiExplanation: result.explanation,
+        scoreBreakdown: result.contributions.map((item) => ({ key: item.key, label: item.label, value: item.value })),
+        scoredAt: new Date().toISOString(),
+        scoreVersion: DEFAULT_SCORING_CONFIG.version,
+      };
+    },
+  });
 
   const effectiveMinScore = useMemo(() => {
     if (scorePreset === "all") return 0;
@@ -94,6 +169,36 @@ const Dashboard = () => {
   }, [customMinScoreInput, scorePreset]);
 
   const fetchLeads = async () => {
+    if (guestMode) {
+      const filtered = guestLeads
+        .filter((lead) => (tierFilter === "all" ? true : lead.tier === tierFilter))
+        .filter((lead) => lead.score >= effectiveMinScore)
+        .filter((lead) => {
+          if (!search.trim()) return true;
+          const term = search.trim().toLowerCase();
+          return (
+            lead.name.toLowerCase().includes(term) ||
+            lead.company.toLowerCase().includes(term) ||
+            lead.email.toLowerCase().includes(term)
+          );
+        })
+        .sort((a, b) => b.score - a.score)
+        .map((lead, index) => ({ ...lead, rank: index + 1 }));
+
+      const pageSize = 25;
+      const nextTotalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+      const safePage = Math.min(page, nextTotalPages);
+      const start = (safePage - 1) * pageSize;
+      const items = filtered.slice(start, start + pageSize);
+
+      setLeads(items);
+      setTotalPages(nextTotalPages);
+      if (safePage !== page) {
+        setPage(safePage);
+      }
+      return;
+    }
+
     setIsLoadingLeads(true);
     const params = new URLSearchParams({
       page: String(page),
@@ -118,6 +223,11 @@ const Dashboard = () => {
   };
 
   const fetchKpis = async () => {
+    if (guestMode) {
+      setKpis(buildGuestKpis(guestLeads));
+      return;
+    }
+
     setIsLoadingKpis(true);
     const response = await apiFetch("/api/kpis", { method: "GET" });
     if (!response.ok) {
@@ -131,11 +241,11 @@ const Dashboard = () => {
 
   useEffect(() => {
     void fetchLeads();
-  }, [page, search, tierFilter, effectiveMinScore]);
+  }, [page, search, tierFilter, effectiveMinScore, guestMode, guestLeads]);
 
   useEffect(() => {
     void fetchKpis();
-  }, []);
+  }, [guestMode, guestLeads]);
 
   const handleImport = async () => {
     if (!importer.csvContent) {
@@ -148,6 +258,25 @@ const Dashboard = () => {
     }
     if (importer.hasDuplicateColumnMapping) {
       importer.setUploadError("Each mapped field must use a different CSV column.");
+      return;
+    }
+
+    if (guestMode) {
+      const result = await importer.importRows();
+      if (result.leads.length === 0) {
+        return;
+      }
+      const merged = scoreLeads(
+        [...guestLeads, ...result.leads.map((lead) => ({ ...lead, id: 0, rank: 0 }))],
+        DEFAULT_SCORING_CONFIG,
+      );
+      setGuestLeads(merged);
+      setMode("work");
+      setPage(1);
+      toast({
+        title: "Guest import completed",
+        description: `${result.leads.length} lead(s) imported to this session.`,
+      });
       return;
     }
 
@@ -182,6 +311,12 @@ const Dashboard = () => {
   };
 
   const handleManualRescore = async () => {
+    if (guestMode) {
+      setGuestLeads((current) => scoreLeads(current, DEFAULT_SCORING_CONFIG));
+      toast({ title: "Re-score complete", description: "Guest session leads recalculated." });
+      return;
+    }
+
     const response = await apiFetch("/api/scoring/rescore", { method: "POST" });
     if (!response.ok) {
       toast({ title: "Re-score failed", description: "API request failed." });
@@ -195,6 +330,13 @@ const Dashboard = () => {
   return (
     <DashboardShell title="Lead Queue">
       <div className="space-y-4">
+        {guestMode && (
+          <Card className="border-amber-300 bg-amber-50">
+            <CardContent className="p-3 text-sm text-amber-900">
+              Guest mode is active. Data lives only in this browser session and will be cleared on logout or tab close.
+            </CardContent>
+          </Card>
+        )}
         <div className="flex gap-2">
           <Button variant={mode === "work" ? "default" : "outline"} onClick={() => setMode("work")}>Work Mode</Button>
           <Button variant={mode === "setup" ? "default" : "outline"} onClick={() => setMode("setup")}>Setup Mode</Button>

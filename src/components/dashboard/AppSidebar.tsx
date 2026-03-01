@@ -11,11 +11,12 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { NavLink } from "@/components/NavLink";
-import { logout } from "@/lib/session";
+import { isGuestSession, logout } from "@/lib/session";
 import { useNavigate } from "react-router-dom";
 
 export function AppSidebar() {
   const navigate = useNavigate();
+  const guestMode = isGuestSession();
 
   const handleLogout = async () => {
     await logout();
@@ -64,12 +65,12 @@ export function AppSidebar() {
           <div className="flex items-center gap-2">
             <Avatar className="h-8 w-8">
               <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground text-xs">
-                JD
+                {guestMode ? "GS" : "JD"}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium text-sidebar-foreground">Jane Doe</div>
-              <div className="truncate text-xs text-sidebar-foreground/60">jane@company.com</div>
+              <div className="truncate text-sm font-medium text-sidebar-foreground">{guestMode ? "Guest Session" : "Jane Doe"}</div>
+              <div className="truncate text-xs text-sidebar-foreground/60">{guestMode ? "Not persisted" : "jane@company.com"}</div>
             </div>
             <Button
               variant="ghost"

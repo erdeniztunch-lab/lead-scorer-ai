@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/apiClient";
 import { useToast } from "@/hooks/use-toast";
 import { DEFAULT_SCORING_CONFIG, mergeScoringConfig, validateScoringConfig, type ScoringConfig } from "@/lib/scoringEngine";
+import { isGuestSession } from "@/lib/session";
 
 interface ScoreRunRow {
   id: string;
@@ -20,6 +21,7 @@ const sourceKeys = ["referral", "webinar", "website", "linkedin", "google ads", 
 
 const DashboardSettings = () => {
   const { toast } = useToast();
+  const guestMode = isGuestSession();
   const [draft, setDraft] = useState<ScoringConfig>(DEFAULT_SCORING_CONFIG);
   const [runs, setRuns] = useState<ScoreRunRow[]>([]);
   const [validationError, setValidationError] = useState("");
@@ -28,6 +30,10 @@ const DashboardSettings = () => {
   const totals = useMemo(() => stats, [stats]);
 
   const loadConfig = async () => {
+    if (guestMode) {
+      setDraft(DEFAULT_SCORING_CONFIG);
+      return;
+    }
     const response = await apiFetch("/api/scoring-config", { method: "GET" });
     if (!response.ok) {
       toast({ title: "Failed to load config", description: "API request failed." });
@@ -38,6 +44,10 @@ const DashboardSettings = () => {
   };
 
   const loadRuns = async () => {
+    if (guestMode) {
+      setRuns([]);
+      return;
+    }
     const response = await apiFetch("/api/scoring-runs?page=1&pageSize=5", { method: "GET" });
     if (!response.ok) return;
     const payload = await response.json();
@@ -45,6 +55,10 @@ const DashboardSettings = () => {
   };
 
   const loadKpis = async () => {
+    if (guestMode) {
+      setStats({ total: 0, hot: 0, warm: 0, cold: 0 });
+      return;
+    }
     const response = await apiFetch("/api/kpis", { method: "GET" });
     if (!response.ok) return;
     const payload = await response.json();
@@ -58,7 +72,7 @@ const DashboardSettings = () => {
 
   useEffect(() => {
     void Promise.all([loadConfig(), loadRuns(), loadKpis()]);
-  }, []);
+  }, [guestMode]);
 
   const updateNumber = (path: string, value: number) => {
     setDraft((current) => {
@@ -74,6 +88,10 @@ const DashboardSettings = () => {
   };
 
   const handleSaveAndRescore = async () => {
+    if (guestMode) {
+      toast({ title: "Guest mode", description: "Settings are read-only in guest mode." });
+      return;
+    }
     const error = validateScoringConfig(draft);
     setValidationError(error ? "Config is invalid." : "");
     if (error) return;
@@ -107,6 +125,13 @@ const DashboardSettings = () => {
   return (
     <DashboardShell title="Settings">
       <div className="space-y-4">
+        {guestMode && (
+          <Card className="border-amber-300 bg-amber-50">
+            <CardContent className="p-3 text-sm text-amber-900">
+              Guest mode is read-only in Settings. Sign in to save scoring config and run history.
+            </CardContent>
+          </Card>
+        )}
         <Card>
           <CardHeader><CardTitle className="text-base">Tier Thresholds</CardTitle></CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-2">
@@ -142,7 +167,9 @@ const DashboardSettings = () => {
         </Card>
 
         {validationError && <p className="text-sm text-destructive">{validationError}</p>}
-        <Button onClick={handleSaveAndRescore}>Save and re-score all leads</Button>
+        <Button onClick={handleSaveAndRescore} disabled={guestMode}>
+          Save and re-score all leads
+        </Button>
 
         <div className="grid gap-4 md:grid-cols-4">
           <Card><CardHeader><CardTitle className="text-base">Total Leads</CardTitle></CardHeader><CardContent><p className="text-3xl font-bold">{totals.total}</p></CardContent></Card>

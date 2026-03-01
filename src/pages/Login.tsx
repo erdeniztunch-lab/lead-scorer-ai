@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ensureUserBootstrap, isAuthenticated, login, register } from "@/lib/session";
+import { ensureUserBootstrap, isAuthenticated, login, loginAsGuest, register } from "@/lib/session";
 
 type AuthMode = "signin" | "signup";
 
@@ -90,6 +90,11 @@ const Login = () => {
     navigate(redirectTo, { replace: true });
   };
 
+  const handleGuestLogin = () => {
+    loginAsGuest();
+    navigate("/dashboard", { replace: true });
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-6">
       <Card className="w-full max-w-md">
@@ -153,6 +158,9 @@ const Login = () => {
           {successText && <p className="text-sm text-emerald-600">{successText}</p>}
           <Button className="w-full" onClick={handleSubmit} disabled={isLoading}>
             {isLoading ? "Please wait..." : mode === "signin" ? "Sign in" : "Create account"}
+          </Button>
+          <Button variant="secondary" className="w-full" onClick={handleGuestLogin} disabled={isLoading}>
+            Continue as guest (no saved data)
           </Button>
           <Button variant="ghost" className="w-full" onClick={() => navigate("/")}>
             Back to landing
