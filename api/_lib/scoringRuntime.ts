@@ -1,4 +1,4 @@
-import { type ScoringConfig } from "./scoringConfig";
+﻿import { type ScoringConfig } from "./scoringConfig.js";
 
 interface ScoreContribution {
   key: string;
@@ -102,3 +102,4 @@ export function scoreLeadWithConfig(input: ScoreInput, config: ScoringConfig) {
     scoreBreakdown: contributions,
   };
 }
+

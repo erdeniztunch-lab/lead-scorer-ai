@@ -1,8 +1,8 @@
-import { json, type ApiRequest, type ApiResponse } from "../_lib/http";
-import { withApiHandler } from "../_lib/handler";
-import { loadCoreRuntimeEnv } from "../_lib/env";
-import { readBearerToken } from "../_lib/security";
-import { verifySupabaseAccessToken } from "../_lib/supabaseAuth";
+﻿import { json, type ApiRequest, type ApiResponse } from "../_lib/http.js";
+import { withApiHandler } from "../_lib/handler.js";
+import { loadCoreRuntimeEnv } from "../_lib/env.js";
+import { readBearerToken } from "../_lib/security.js";
+import { verifySupabaseAccessToken } from "../_lib/supabaseAuth.js";
 
 const handler = withApiHandler(
   {
@@ -35,3 +35,4 @@ const handler = withApiHandler(
 );
 
 export default handler;
+

@@ -1,6 +1,6 @@
-import { json, type ApiRequest, type ApiResponse, withErrorMeta } from "./_lib/http";
-import { withApiHandler } from "./_lib/handler";
-import { resolveAuthContext } from "./_lib/authContext";
+﻿import { json, type ApiRequest, type ApiResponse, withErrorMeta } from "./_lib/http.js";
+import { withApiHandler } from "./_lib/handler.js";
+import { resolveAuthContext } from "./_lib/authContext.js";
 
 function parseHoursAgo(value: string): number | null {
   const text = value.toLowerCase();
@@ -71,3 +71,4 @@ const handler = withApiHandler(
 );
 
 export default handler;
+

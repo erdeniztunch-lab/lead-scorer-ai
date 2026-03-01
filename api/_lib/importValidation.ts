@@ -1,4 +1,4 @@
-import { type CsvRow } from "./csv";
+﻿import { type CsvRow } from "./csv.js";
 
 export type ImportIssueType =
   | "missing_required"
@@ -162,3 +162,4 @@ export function validateImportRows(
 
   return { staged, issues };
 }
+

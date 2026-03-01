@@ -1,8 +1,8 @@
-import { readJsonBody, json, type ApiRequest, type ApiResponse, withErrorMeta } from "../../_lib/http";
-import { withApiHandler } from "../../_lib/handler";
-import { parseCsv } from "../../_lib/csv";
-import { resolveAuthContext } from "../../_lib/authContext";
-import { type ImportIssueType, validateImportRows } from "../../_lib/importValidation";
+﻿import { readJsonBody, json, type ApiRequest, type ApiResponse, withErrorMeta } from "../../_lib/http.js";
+import { withApiHandler } from "../../_lib/handler.js";
+import { parseCsv } from "../../_lib/csv.js";
+import { resolveAuthContext } from "../../_lib/authContext.js";
+import { type ImportIssueType, validateImportRows } from "../../_lib/importValidation.js";
 
 interface PreviewBody {
   csvContent?: string;
@@ -114,3 +114,4 @@ const handler = withApiHandler(
 );
 
 export default handler;
+

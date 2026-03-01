@@ -1,9 +1,9 @@
-import { json, readJsonBody, type ApiRequest, type ApiResponse, withErrorMeta } from "../_lib/http";
-import { withApiHandler } from "../_lib/handler";
-import { loadCoreRuntimeEnv } from "../_lib/env";
-import { readBearerToken } from "../_lib/security";
-import { verifySupabaseAccessToken } from "../_lib/supabaseAuth";
-import { createSupabaseClientForUser } from "../_lib/supabaseDb";
+﻿import { json, readJsonBody, type ApiRequest, type ApiResponse, withErrorMeta } from "../_lib/http.js";
+import { withApiHandler } from "../_lib/handler.js";
+import { loadCoreRuntimeEnv } from "../_lib/env.js";
+import { readBearerToken } from "../_lib/security.js";
+import { verifySupabaseAccessToken } from "../_lib/supabaseAuth.js";
+import { createSupabaseClientForUser } from "../_lib/supabaseDb.js";
 
 type BootstrapBody = {
   accountName?: string | null;
@@ -72,3 +72,4 @@ const handler = withApiHandler(
 );
 
 export default handler;
+

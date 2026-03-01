@@ -1,7 +1,7 @@
-import { json, type ApiRequest, type ApiResponse, withErrorMeta } from "../_lib/http";
-import { withApiHandler } from "../_lib/handler";
-import { resolveAuthContext } from "../_lib/authContext";
-import { getQueryNumber, getQueryValue } from "../_lib/query";
+﻿import { json, type ApiRequest, type ApiResponse, withErrorMeta } from "../_lib/http.js";
+import { withApiHandler } from "../_lib/handler.js";
+import { resolveAuthContext } from "../_lib/authContext.js";
+import { getQueryNumber, getQueryValue } from "../_lib/query.js";
 
 const allowedSortFields = new Set(["score", "created_at", "name", "company", "source", "last_activity"]);
 const allowedQualityProfiles = new Set(["all", "high_intent", "balanced_pipeline", "volume_mode"]);
@@ -105,3 +105,4 @@ const handler = withApiHandler(
 );
 
 export default handler;
+

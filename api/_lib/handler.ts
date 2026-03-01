@@ -1,5 +1,5 @@
-import { methodNotAllowed, type ApiRequest, type ApiResponse, withErrorMeta } from "./http";
-import { applyApiSecurityHeaders, enforceBearerToken, enforceOrigin } from "./security";
+﻿import { methodNotAllowed, type ApiRequest, type ApiResponse, withErrorMeta } from "./http.js";
+import { applyApiSecurityHeaders, enforceBearerToken, enforceOrigin } from "./security.js";
 
 export interface ApiHandlerContext {
   requestId: string;
@@ -83,3 +83,4 @@ export function withApiHandler(options: HandlerOptions, endpointHandler: Endpoin
     }
   };
 }
+

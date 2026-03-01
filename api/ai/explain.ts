@@ -1,8 +1,8 @@
-import { json, readJsonBody, type ApiRequest, type ApiResponse, withErrorMeta } from "../_lib/http";
-import { loadAiRuntimeEnv } from "../_lib/env";
-import { readBearerToken } from "../_lib/security";
-import { verifySupabaseAccessToken } from "../_lib/supabaseAuth";
-import { withApiHandler } from "../_lib/handler";
+﻿import { json, readJsonBody, type ApiRequest, type ApiResponse, withErrorMeta } from "../_lib/http.js";
+import { loadAiRuntimeEnv } from "../_lib/env.js";
+import { readBearerToken } from "../_lib/security.js";
+import { verifySupabaseAccessToken } from "../_lib/supabaseAuth.js";
+import { withApiHandler } from "../_lib/handler.js";
 
 interface ExplainRequestBody {
   leadName?: string;
@@ -135,3 +135,4 @@ const handler = withApiHandler(
 );
 
 export default handler;
+

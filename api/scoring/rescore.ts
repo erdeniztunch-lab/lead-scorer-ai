@@ -1,8 +1,8 @@
-import { json, type ApiRequest, type ApiResponse, withErrorMeta } from "../_lib/http";
-import { withApiHandler } from "../_lib/handler";
-import { resolveAuthContext } from "../_lib/authContext";
-import { DEFAULT_SCORING_CONFIG, mergeScoringConfig, type ScoringConfig } from "../_lib/scoringConfig";
-import { scoreLeadWithConfig } from "../_lib/scoringRuntime";
+﻿import { json, type ApiRequest, type ApiResponse, withErrorMeta } from "../_lib/http.js";
+import { withApiHandler } from "../_lib/handler.js";
+import { resolveAuthContext } from "../_lib/authContext.js";
+import { DEFAULT_SCORING_CONFIG, mergeScoringConfig, type ScoringConfig } from "../_lib/scoringConfig.js";
+import { scoreLeadWithConfig } from "../_lib/scoringRuntime.js";
 
 const handler = withApiHandler(
   {
@@ -100,3 +100,4 @@ const handler = withApiHandler(
 );
 
 export default handler;
+

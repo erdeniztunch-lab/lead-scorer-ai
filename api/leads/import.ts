@@ -1,9 +1,9 @@
-import { json, readJsonBody, type ApiRequest, type ApiResponse, withErrorMeta } from "../_lib/http";
-import { withApiHandler } from "../_lib/handler";
-import { parseCsv } from "../_lib/csv";
-import { scoreFromImport } from "../_lib/importScoring";
-import { resolveAuthContext } from "../_lib/authContext";
-import { type ImportIssueType, type TypedImportIssue, validateImportRows } from "../_lib/importValidation";
+﻿import { json, readJsonBody, type ApiRequest, type ApiResponse, withErrorMeta } from "../_lib/http.js";
+import { withApiHandler } from "../_lib/handler.js";
+import { parseCsv } from "../_lib/csv.js";
+import { scoreFromImport } from "../_lib/importScoring.js";
+import { resolveAuthContext } from "../_lib/authContext.js";
+import { type ImportIssueType, type TypedImportIssue, validateImportRows } from "../_lib/importValidation.js";
 
 type Tier = "hot" | "warm" | "cold";
 
@@ -245,3 +245,4 @@ const handler = withApiHandler(
 );
 
 export default handler;
+

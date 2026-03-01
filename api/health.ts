@@ -1,5 +1,5 @@
-import { json, type ApiRequest, type ApiResponse } from "./_lib/http";
-import { withApiHandler } from "./_lib/handler";
+﻿import { json, type ApiRequest, type ApiResponse } from "./_lib/http.js";
+import { withApiHandler } from "./_lib/handler.js";
 
 const handler = withApiHandler(
   {
@@ -16,3 +16,4 @@ const handler = withApiHandler(
 );
 
 export default handler;
+

@@ -1,4 +1,4 @@
-import { type ApiRequest, type ApiResponse, withErrorMeta } from "./http";
+﻿import { type ApiRequest, type ApiResponse, withErrorMeta } from "./http.js";
 import { timingSafeEqual } from "node:crypto";
 
 function getHeader(req: ApiRequest, key: string): string {
@@ -83,3 +83,4 @@ export function enforceBearerToken(
 
   return true;
 }
+

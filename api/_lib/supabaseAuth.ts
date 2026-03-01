@@ -1,5 +1,5 @@
-import { type ApiResponse } from "./http";
-import { withErrorMeta } from "./http";
+﻿import { type ApiResponse } from "./http.js";
+import { withErrorMeta } from "./http.js";
 
 interface SupabaseUserResponse {
   id?: string;
@@ -56,3 +56,4 @@ export async function verifySupabaseAccessToken(
     email: body.email,
   };
 }
+

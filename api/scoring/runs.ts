@@ -1,7 +1,7 @@
-import { json, type ApiRequest, type ApiResponse, withErrorMeta } from "../_lib/http";
-import { withApiHandler } from "../_lib/handler";
-import { resolveAuthContext } from "../_lib/authContext";
-import { getQueryNumber } from "../_lib/query";
+﻿import { json, type ApiRequest, type ApiResponse, withErrorMeta } from "../_lib/http.js";
+import { withApiHandler } from "../_lib/handler.js";
+import { resolveAuthContext } from "../_lib/authContext.js";
+import { getQueryNumber } from "../_lib/query.js";
 
 const handler = withApiHandler(
   {
@@ -41,3 +41,4 @@ const handler = withApiHandler(
 );
 
 export default handler;
+

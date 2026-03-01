@@ -1,4 +1,4 @@
-import { type CsvRow } from "./csv";
+﻿import { type CsvRow } from "./csv.js";
 
 export interface ImportLeadOutput {
   name: string;
@@ -135,3 +135,4 @@ export function scoreFromImport(row: CsvRow, mapping: Record<string, string>): I
     scoredAt: new Date().toISOString(),
   };
 }
+

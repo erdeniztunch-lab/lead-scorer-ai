@@ -1,8 +1,8 @@
-import { type ApiRequest, type ApiResponse, withErrorMeta } from "./http";
-import { loadCoreRuntimeEnv } from "./env";
-import { readBearerToken } from "./security";
-import { verifySupabaseAccessToken } from "./supabaseAuth";
-import { createSupabaseClientForUser } from "./supabaseDb";
+﻿import { type ApiRequest, type ApiResponse, withErrorMeta } from "./http.js";
+import { loadCoreRuntimeEnv } from "./env.js";
+import { readBearerToken } from "./security.js";
+import { verifySupabaseAccessToken } from "./supabaseAuth.js";
+import { createSupabaseClientForUser } from "./supabaseDb.js";
 
 export interface AuthContext {
   accountId: string;
@@ -56,3 +56,4 @@ export async function resolveAuthContext(
     db,
   };
 }
+

@@ -50,7 +50,7 @@ const DashboardSettings = () => {
       setRuns([]);
       return;
     }
-    const response = await apiFetch("/api/scoring-runs?page=1&pageSize=5", { method: "GET" });
+    const response = await apiFetch("/api/scoring/runs?page=1&pageSize=5", { method: "GET" });
     if (!response.ok) return;
     const payload = await response.json();
     setRuns(payload.items ?? []);

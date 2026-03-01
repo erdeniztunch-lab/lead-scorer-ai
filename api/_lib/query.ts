@@ -1,4 +1,4 @@
-import { type ApiRequest } from "./http";
+﻿import { type ApiRequest } from "./http.js";
 
 export function getQueryValue(req: ApiRequest, key: string): string {
   const value = req.query?.[key];
@@ -16,3 +16,4 @@ export function getQueryNumber(req: ApiRequest, key: string, fallback: number): 
   }
   return parsed;
 }
+

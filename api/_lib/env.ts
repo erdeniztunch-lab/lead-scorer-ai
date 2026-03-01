@@ -1,4 +1,4 @@
-import { type ApiResponse, withErrorMeta } from "./http";
+﻿import { type ApiResponse, withErrorMeta } from "./http.js";
 
 export interface CoreRuntimeEnv {
   supabaseUrl: string;
@@ -45,3 +45,4 @@ export function loadAiRuntimeEnv(res: ApiResponse, requestId?: string): AiRuntim
     geminiModel,
   };
 }
+
