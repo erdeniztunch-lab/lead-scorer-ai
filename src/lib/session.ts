@@ -1,89 +1,36 @@
-const SESSION_KEY = "lead_scorer_session_v1";
-const DEFAULT_SESSION_TTL_MS = 1000 * 60 * 60 * 12;
+import { type AuthChangeEvent, type Session, type Subscription } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabaseClient";
 
-interface SessionPayload {
-  status: "active";
-  issuedAt: number;
-  expiresAt: number;
-  nonce: string;
+export async function login(email: string, password: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  return { error: error?.message ?? null };
 }
 
-function getStorage(): Storage | null {
-  if (typeof window === "undefined") {
+export async function logout(): Promise<void> {
+  await supabase.auth.signOut();
+}
+
+export async function getSession(): Promise<Session | null> {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
     return null;
   }
-  if (typeof window.sessionStorage !== "undefined") {
-    return window.sessionStorage;
-  }
-  if (typeof window.localStorage !== "undefined") {
-    return window.localStorage;
-  }
-  return null;
+  return data.session ?? null;
 }
 
-function readSession(): SessionPayload | null {
-  const storage = getStorage();
-  if (!storage) {
-    return null;
-  }
-  const raw = storage.getItem(SESSION_KEY);
-  if (!raw) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(raw) as SessionPayload;
-    if (parsed.status !== "active" || typeof parsed.expiresAt !== "number" || typeof parsed.issuedAt !== "number") {
-      return null;
-    }
-    return parsed;
-  } catch {
-    return null;
-  }
+export async function isAuthenticated(): Promise<boolean> {
+  const session = await getSession();
+  return Boolean(session?.access_token);
 }
 
-function randomNonce(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+export async function getAccessToken(): Promise<string | null> {
+  const session = await getSession();
+  return session?.access_token ?? null;
 }
 
-export function isAuthenticated(): boolean {
-  const storage = getStorage();
-  if (!storage) {
-    return false;
-  }
-  const session = readSession();
-  if (!session) {
-    storage.removeItem(SESSION_KEY);
-    return false;
-  }
-  if (Date.now() > session.expiresAt) {
-    storage.removeItem(SESSION_KEY);
-    return false;
-  }
-  return true;
-}
-
-export function login(): void {
-  const storage = getStorage();
-  if (!storage) {
-    return;
-  }
-  const issuedAt = Date.now();
-  const payload: SessionPayload = {
-    status: "active",
-    issuedAt,
-    expiresAt: issuedAt + DEFAULT_SESSION_TTL_MS,
-    nonce: randomNonce(),
-  };
-  storage.setItem(SESSION_KEY, JSON.stringify(payload));
-}
-
-export function logout(): void {
-  const storage = getStorage();
-  if (!storage) {
-    return;
-  }
-  storage.removeItem(SESSION_KEY);
+export function onAuthStateChange(
+  callback: (event: AuthChangeEvent, session: Session | null) => void,
+): Subscription {
+  const { data } = supabase.auth.onAuthStateChange(callback);
+  return data.subscription;
 }

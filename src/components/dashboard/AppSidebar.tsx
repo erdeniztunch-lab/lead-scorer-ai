@@ -17,8 +17,8 @@ import { useNavigate } from "react-router-dom";
 export function AppSidebar() {
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate("/login");
   };
 
