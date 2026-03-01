@@ -14,18 +14,6 @@ begin
 end;
 $$;
 
--- Resolve caller account from auth.users -> public.users mapping.
-create or replace function public.current_account_id()
-returns uuid
-language sql
-stable
-as $$
-  select u.account_id
-  from public.users u
-  where u.id = auth.uid()
-  limit 1;
-$$;
-
 create table if not exists public.accounts (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -97,11 +85,33 @@ create table if not exists public.score_runs (
 );
 
 -- Optional owner link after users table exists.
-alter table public.accounts
-  add constraint accounts_owner_user_fk
-  foreign key (owner_user_id)
-  references public.users(id)
-  on delete set null;
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'accounts_owner_user_fk'
+  ) then
+    alter table public.accounts
+      add constraint accounts_owner_user_fk
+      foreign key (owner_user_id)
+      references public.users(id)
+      on delete set null;
+  end if;
+end
+$$;
+
+-- Resolve caller account from auth.users -> public.users mapping.
+create or replace function public.current_account_id()
+returns uuid
+language sql
+stable
+as $$
+  select u.account_id
+  from public.users u
+  where u.id = auth.uid()
+  limit 1;
+$$;
 
 -- Indexes required by plan.
 create index if not exists idx_users_account_id on public.users(account_id);

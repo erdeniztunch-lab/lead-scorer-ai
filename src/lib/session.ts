@@ -9,6 +9,28 @@ export async function login(email: string, password: string): Promise<{ error: s
   return { error: error?.message ?? null };
 }
 
+export async function register(
+  email: string,
+  password: string,
+): Promise<{ error: string | null; requiresEmailConfirmation: boolean }> {
+  if (!supabase) {
+    return {
+      error: "Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.",
+      requiresEmailConfirmation: false,
+    };
+  }
+
+  const { data, error } = await supabase.auth.signUp({ email, password });
+  if (error) {
+    return { error: error.message, requiresEmailConfirmation: false };
+  }
+
+  return {
+    error: null,
+    requiresEmailConfirmation: !data.session,
+  };
+}
+
 export async function logout(): Promise<void> {
   if (!supabase) {
     return;
@@ -35,6 +57,40 @@ export async function isAuthenticated(): Promise<boolean> {
 export async function getAccessToken(): Promise<string | null> {
   const session = await getSession();
   return session?.access_token ?? null;
+}
+
+export async function ensureUserBootstrap(accountName?: string): Promise<{ ok: boolean; error: string | null }> {
+  const token = await getAccessToken();
+  if (!token) {
+    return { ok: false, error: "No active session." };
+  }
+
+  const response = await fetch("/api/auth/bootstrap", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      accountName: accountName?.trim() || null,
+    }),
+  });
+
+  if (response.ok) {
+    return { ok: true, error: null };
+  }
+
+  let message = "Failed to initialize account.";
+  try {
+    const payload = (await response.json()) as { message?: string };
+    if (payload?.message) {
+      message = payload.message;
+    }
+  } catch {
+    // Keep default message.
+  }
+
+  return { ok: false, error: message };
 }
 
 export function onAuthStateChange(

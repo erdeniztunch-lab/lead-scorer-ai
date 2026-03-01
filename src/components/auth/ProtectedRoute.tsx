@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { onAuthStateChange } from "@/lib/session";
+import { ensureUserBootstrap, onAuthStateChange } from "@/lib/session";
 import { apiFetch } from "@/lib/apiClient";
 
 interface ProtectedRouteProps {
@@ -13,6 +13,15 @@ async function verifySessionWithBackend(): Promise<boolean> {
   return response.ok;
 }
 
+async function verifyAndBootstrap(): Promise<boolean> {
+  const isValidSession = await verifySessionWithBackend();
+  if (!isValidSession) {
+    return false;
+  }
+  const bootstrap = await ensureUserBootstrap();
+  return bootstrap.ok;
+}
+
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const location = useLocation();
   const [isChecking, setIsChecking] = useState(true);
@@ -22,7 +31,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     let mounted = true;
 
     const run = async () => {
-      const ok = await verifySessionWithBackend();
+      const ok = await verifyAndBootstrap();
       if (!mounted) {
         return;
       }
@@ -33,7 +42,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     void run();
 
     const subscription = onAuthStateChange(async () => {
-      const ok = await verifySessionWithBackend();
+      const ok = await verifyAndBootstrap();
       if (!mounted) {
         return;
       }
