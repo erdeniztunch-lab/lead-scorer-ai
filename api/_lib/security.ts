@@ -1,4 +1,5 @@
 import { type ApiRequest, type ApiResponse, withErrorMeta } from "./http";
+import { timingSafeEqual } from "node:crypto";
 
 function getHeader(req: ApiRequest, key: string): string {
   const value = req.headers[key.toLowerCase()];
@@ -17,7 +18,18 @@ export function applyApiSecurityHeaders(res: ApiResponse): void {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("X-DNS-Prefetch-Control", "off");
+  res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
   res.setHeader("Cache-Control", "no-store");
+}
+
+function safeEqualSecrets(left: string, right: string): boolean {
+  const a = Buffer.from(left, "utf8");
+  const b = Buffer.from(right, "utf8");
+  if (a.length !== b.length) {
+    return false;
+  }
+  return timingSafeEqual(a, b);
 }
 
 export function enforceOrigin(
@@ -62,7 +74,7 @@ export function enforceBearerToken(
 
   const token = readBearerToken(req);
 
-  if (!token || token !== expected) {
+  if (!token || !safeEqualSecrets(token, expected)) {
     withErrorMeta(res, 401, "unauthorized", "Missing or invalid bearer token.", {
       ...(requestId ? { requestId } : {}),
     });

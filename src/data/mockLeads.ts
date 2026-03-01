@@ -151,10 +151,3 @@ export const mockLeads: Lead[] = baseLeads.map((lead) => ({
   scoredAt: initialScoredAt,
   scoreVersion: "v0-manual",
 }));
-
-export const kpiData = {
-  totalLeads: 1248,
-  timeToFirstContact: "2.4h",
-  precisionAt10: "87%",
-  lift: "3.2x",
-};

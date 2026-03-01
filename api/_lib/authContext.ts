@@ -1,5 +1,5 @@
 import { type ApiRequest, type ApiResponse, withErrorMeta } from "./http";
-import { loadRuntimeEnv } from "./env";
+import { loadCoreRuntimeEnv } from "./env";
 import { readBearerToken } from "./security";
 import { verifySupabaseAccessToken } from "./supabaseAuth";
 import { createSupabaseClientForUser } from "./supabaseDb";
@@ -16,7 +16,7 @@ export async function resolveAuthContext(
   res: ApiResponse,
   requestId: string,
 ): Promise<AuthContext | null> {
-  const env = loadRuntimeEnv(res, requestId);
+  const env = loadCoreRuntimeEnv(res, requestId);
   if (!env) {
     return null;
   }

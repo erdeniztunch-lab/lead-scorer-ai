@@ -1,5 +1,5 @@
 import { json, readJsonBody, type ApiRequest, type ApiResponse, withErrorMeta } from "../_lib/http";
-import { loadRuntimeEnv } from "../_lib/env";
+import { loadAiRuntimeEnv } from "../_lib/env";
 import { readBearerToken } from "../_lib/security";
 import { verifySupabaseAccessToken } from "../_lib/supabaseAuth";
 import { withApiHandler } from "../_lib/handler";
@@ -80,7 +80,7 @@ const handler = withApiHandler(
     maxBodyBytes: 12 * 1024,
   },
   async (req: ApiRequest, res: ApiResponse, context): Promise<void> => {
-    const env = loadRuntimeEnv(res, context.requestId);
+    const env = loadAiRuntimeEnv(res, context.requestId);
     if (!env) {
       return;
     }

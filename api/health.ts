@@ -10,7 +10,6 @@ const handler = withApiHandler(
       ok: true,
       service: "leadspark-api",
       now: new Date().toISOString(),
-      environment: process.env.NODE_ENV ?? "development",
       requestId: context.requestId,
     });
   },

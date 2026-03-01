@@ -124,7 +124,6 @@ const Dashboard = () => {
   const [qualityProfile, setQualityProfile] = useState<QualityProfile>("all");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [applyScoringOnImport] = useState(true);
   const [preview, setPreview] = useState<ImportPreviewResponse | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
 
@@ -332,7 +331,7 @@ const Dashboard = () => {
     importer.setUploadStatus(`${payload.importedCount} lead(s) imported.${payload.skippedCount > 0 ? ` Skipped ${payload.skippedCount} row(s).` : ""}`);
     toast({
       title: "Import completed",
-      description: applyScoringOnImport ? "Leads imported and scored via API." : "Leads imported.",
+      description: "Leads imported and scored via API.",
     });
     setMode("work");
     setPage(1);
