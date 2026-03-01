@@ -16,9 +16,13 @@ export function json(res: ApiResponse, statusCode: number, body: unknown): void 
   res.json(body);
 }
 
-export function methodNotAllowed(res: ApiResponse, allowed: string[]): void {
+export function methodNotAllowed(
+  res: ApiResponse,
+  allowed: string[],
+  meta?: Record<string, unknown>,
+): void {
   res.setHeader("Allow", allowed.join(", "));
-  json(res, 405, { error: "method_not_allowed", allowed });
+  json(res, 405, { error: "method_not_allowed", allowed, ...(meta ?? {}) });
 }
 
 export function error(res: ApiResponse, statusCode: number, code: string, message: string): void {
@@ -26,6 +30,21 @@ export function error(res: ApiResponse, statusCode: number, code: string, messag
     error: code,
     message,
     timestamp: new Date().toISOString(),
+  });
+}
+
+export function withErrorMeta(
+  res: ApiResponse,
+  statusCode: number,
+  code: string,
+  message: string,
+  meta?: Record<string, unknown>,
+): void {
+  json(res, statusCode, {
+    error: code,
+    message,
+    timestamp: new Date().toISOString(),
+    ...(meta ?? {}),
   });
 }
 

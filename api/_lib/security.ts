@@ -1,4 +1,4 @@
-import { error, type ApiRequest, type ApiResponse } from "./http";
+import { type ApiRequest, type ApiResponse, withErrorMeta } from "./http";
 
 function getHeader(req: ApiRequest, key: string): string {
   const value = req.headers[key.toLowerCase()];
@@ -20,7 +20,11 @@ export function applyApiSecurityHeaders(res: ApiResponse): void {
   res.setHeader("Cache-Control", "no-store");
 }
 
-export function enforceOrigin(req: ApiRequest, res: ApiResponse): boolean {
+export function enforceOrigin(
+  req: ApiRequest,
+  res: ApiResponse,
+  requestId?: string,
+): boolean {
   const origin = getHeader(req, "origin");
   if (!origin) {
     return true;
@@ -37,14 +41,20 @@ export function enforceOrigin(req: ApiRequest, res: ApiResponse): boolean {
     .filter(Boolean);
 
   if (allowedList.length > 0 && !allowedList.includes(origin)) {
-    error(res, 403, "forbidden_origin", "Request origin is not allowed.");
+    withErrorMeta(res, 403, "forbidden_origin", "Request origin is not allowed.", {
+      ...(requestId ? { requestId } : {}),
+    });
     return false;
   }
 
   return true;
 }
 
-export function enforceBearerToken(req: ApiRequest, res: ApiResponse): boolean {
+export function enforceBearerToken(
+  req: ApiRequest,
+  res: ApiResponse,
+  requestId?: string,
+): boolean {
   const expected = process.env.INTERNAL_API_TOKEN?.trim();
   if (!expected) {
     return true;
@@ -53,7 +63,9 @@ export function enforceBearerToken(req: ApiRequest, res: ApiResponse): boolean {
   const token = readBearerToken(req);
 
   if (!token || token !== expected) {
-    error(res, 401, "unauthorized", "Missing or invalid bearer token.");
+    withErrorMeta(res, 401, "unauthorized", "Missing or invalid bearer token.", {
+      ...(requestId ? { requestId } : {}),
+    });
     return false;
   }
 

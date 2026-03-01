@@ -1,5 +1,4 @@
-import { type ApiResponse } from "./http";
-import { error } from "./http";
+import { type ApiResponse, withErrorMeta } from "./http";
 
 export interface RuntimeEnv {
   supabaseUrl: string;
@@ -8,14 +7,16 @@ export interface RuntimeEnv {
   geminiModel: string;
 }
 
-export function loadRuntimeEnv(res: ApiResponse): RuntimeEnv | null {
+export function loadRuntimeEnv(res: ApiResponse, requestId?: string): RuntimeEnv | null {
   const supabaseUrl = process.env.SUPABASE_URL?.trim() ?? "";
   const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim() ?? "";
   const geminiApiKey = process.env.GEMINI_API_KEY?.trim() ?? "";
   const geminiModel = process.env.GEMINI_MODEL?.trim() || "gemini-1.5-flash";
 
   if (!supabaseUrl || !supabaseAnonKey || !geminiApiKey) {
-    error(res, 500, "misconfigured_env", "Server environment variables are not configured.");
+    withErrorMeta(res, 500, "misconfigured_env", "Server environment variables are not configured.", {
+      ...(requestId ? { requestId } : {}),
+    });
     return null;
   }
 

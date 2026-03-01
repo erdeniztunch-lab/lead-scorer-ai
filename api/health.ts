@@ -1,26 +1,19 @@
-import { error, json, methodNotAllowed, type ApiRequest, type ApiResponse } from "./_lib/http";
-import { applyApiSecurityHeaders, enforceOrigin } from "./_lib/security";
+import { json, type ApiRequest, type ApiResponse } from "./_lib/http";
+import { withApiHandler } from "./_lib/handler";
 
-export default function handler(req: ApiRequest, res: ApiResponse): void {
-  applyApiSecurityHeaders(res);
-
-  if (!enforceOrigin(req, res)) {
-    return;
-  }
-
-  if (req.method !== "GET") {
-    methodNotAllowed(res, ["GET"]);
-    return;
-  }
-
-  try {
+const handler = withApiHandler(
+  {
+    allowedMethods: ["GET"],
+  },
+  async (_req: ApiRequest, res: ApiResponse, context) => {
     json(res, 200, {
       ok: true,
       service: "leadspark-api",
       now: new Date().toISOString(),
       environment: process.env.NODE_ENV ?? "development",
+      requestId: context.requestId,
     });
-  } catch {
-    error(res, 500, "internal_error", "Unexpected server error.");
-  }
-}
+  },
+);
+
+export default handler;

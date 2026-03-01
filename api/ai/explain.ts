@@ -1,7 +1,8 @@
-import { error, json, methodNotAllowed, readJsonBody, type ApiRequest, type ApiResponse } from "../_lib/http";
+import { json, readJsonBody, type ApiRequest, type ApiResponse, withErrorMeta } from "../_lib/http";
 import { loadRuntimeEnv } from "../_lib/env";
-import { applyApiSecurityHeaders, enforceOrigin, readBearerToken } from "../_lib/security";
+import { readBearerToken } from "../_lib/security";
 import { verifySupabaseAccessToken } from "../_lib/supabaseAuth";
+import { withApiHandler } from "../_lib/handler";
 
 interface ExplainRequestBody {
   leadName?: string;
@@ -73,63 +74,64 @@ async function callGemini(
   return text;
 }
 
-export default async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
-  applyApiSecurityHeaders(res);
+const handler = withApiHandler(
+  {
+    allowedMethods: ["POST"],
+    maxBodyBytes: 12 * 1024,
+  },
+  async (req: ApiRequest, res: ApiResponse, context): Promise<void> => {
+    const env = loadRuntimeEnv(res, context.requestId);
+    if (!env) {
+      return;
+    }
 
-  if (!enforceOrigin(req, res)) {
-    return;
-  }
-
-  if (req.method !== "POST") {
-    methodNotAllowed(res, ["POST"]);
-    return;
-  }
-
-  const env = loadRuntimeEnv(res);
-  if (!env) {
-    return;
-  }
-
-  const accessToken = readBearerToken(req);
-  const user = await verifySupabaseAccessToken(res, {
-    supabaseUrl: env.supabaseUrl,
-    supabaseAnonKey: env.supabaseAnonKey,
-    accessToken,
-  });
-  if (!user) {
-    return;
-  }
-
-  const body = readJsonBody<ExplainRequestBody>(req);
-  const validationError = validateBody(body);
-  if (validationError) {
-    error(res, 400, "invalid_request", validationError);
-    return;
-  }
-
-  const reasons = (body.reasons ?? []).slice(0, 3).join(", ") || "No explicit reasons";
-  const prompt = [
-    "You are an AI sales assistant for lead prioritization.",
-    "Return only one concise paragraph in English.",
-    "Do not invent facts and do not include markdown.",
-    `Lead: ${body.leadName}`,
-    `Company: ${body.company}`,
-    `Score: ${Math.round(body.score ?? 0)}`,
-    `Tier: ${body.tier}`,
-    `Reasons: ${reasons}`,
-    "Write a practical explanation and a next best action.",
-  ].join("\n");
-
-  try {
-    const explanation = await callGemini(env.geminiApiKey, env.geminiModel, prompt);
-    json(res, 200, {
-      explanation,
-      provider: "gemini",
-      model: env.geminiModel,
-      userId: user.id,
-      generatedAt: new Date().toISOString(),
+    const accessToken = readBearerToken(req);
+    const user = await verifySupabaseAccessToken(res, {
+      supabaseUrl: env.supabaseUrl,
+      supabaseAnonKey: env.supabaseAnonKey,
+      accessToken,
+      requestId: context.requestId,
     });
-  } catch {
-    error(res, 502, "gemini_upstream_error", "Gemini API request failed.");
-  }
-}
+    if (!user) {
+      return;
+    }
+
+    const body = readJsonBody<ExplainRequestBody>(req);
+    const validationError = validateBody(body);
+    if (validationError) {
+      withErrorMeta(res, 400, "invalid_request", validationError, { requestId: context.requestId });
+      return;
+    }
+
+    const reasons = (body.reasons ?? []).slice(0, 3).join(", ") || "No explicit reasons";
+    const prompt = [
+      "You are an AI sales assistant for lead prioritization.",
+      "Return only one concise paragraph in English.",
+      "Do not invent facts and do not include markdown.",
+      `Lead: ${body.leadName}`,
+      `Company: ${body.company}`,
+      `Score: ${Math.round(body.score ?? 0)}`,
+      `Tier: ${body.tier}`,
+      `Reasons: ${reasons}`,
+      "Write a practical explanation and a next best action.",
+    ].join("\n");
+
+    try {
+      const explanation = await callGemini(env.geminiApiKey, env.geminiModel, prompt);
+      json(res, 200, {
+        explanation,
+        provider: "gemini",
+        model: env.geminiModel,
+        userId: user.id,
+        generatedAt: new Date().toISOString(),
+        requestId: context.requestId,
+      });
+    } catch {
+      withErrorMeta(res, 502, "gemini_upstream_error", "Gemini API request failed.", {
+        requestId: context.requestId,
+      });
+    }
+  },
+);
+
+export default handler;
