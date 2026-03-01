@@ -1,276 +1,302 @@
-import { useState } from "react";
-import { Users, Clock, Target, TrendingUp, Mail, Phone, Linkedin, Search, ChevronDown, ChevronUp, BarChart3, Settings, LogOut } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  AlertCircle,
+  Download,
+  Linkedin,
+  Mail,
+  Phone,
+  RefreshCcw,
+  Search,
+  Upload,
+  Users,
+} from "lucide-react";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { NavLink } from "@/components/NavLink";
-import { mockLeads, kpiData, type Lead } from "@/data/mockLeads";
-import { format } from "date-fns";
+import { type Lead } from "@/data/mockLeads";
+import { type ImportIssue, useLeadImport } from "@/hooks/useLeadImport";
+import { useLeadScoring } from "@/hooks/useLeadScoring";
+import { type CsvRow } from "@/lib/csv";
+import { formatHoursAverage, formatLift, formatPrecisionAt10 } from "@/lib/leadMetrics";
+import { loadLeadsFromStorage, saveLeadsToStorage } from "@/lib/leadStore";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
-const tierColors = {
-  hot: "bg-score-hot-bg text-score-hot border-score-hot/20",
-  warm: "bg-score-warm-bg text-score-warm border-score-warm/20",
-  cold: "bg-score-cold-bg text-score-cold border-score-cold/20",
-};
+const leadFields = [
+  { key: "name", label: "Name", required: true },
+  { key: "company", label: "Company", required: true },
+  { key: "email", label: "Email", required: true },
+  { key: "source", label: "Source", required: true },
+  { key: "score", label: "Legacy Score", required: false },
+  { key: "reasons", label: "Legacy Reasons", required: false },
+  { key: "lastActivity", label: "Last Activity", required: false },
+  { key: "emailOpens", label: "Email Opens", required: false },
+  { key: "emailClicks", label: "Email Clicks", required: false },
+  { key: "pageViews", label: "Page Views", required: false },
+  { key: "demoRequested", label: "Demo Requested (true/false)", required: false },
+  { key: "industryMatch", label: "Industry Match (true/false)", required: false },
+  { key: "companySizeFit", label: "Company Size Fit (true/false)", required: false },
+  { key: "budgetFit", label: "Budget Fit (true/false)", required: false },
+] as const;
 
-function ScoreBadge({ score, tier }: { score: number; tier: Lead["tier"] }) {
-  return (
-    <span className={cn("inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-bold", tierColors[tier])}>
-      {score}
-    </span>
-  );
+type LeadFieldKey = (typeof leadFields)[number]["key"];
+type WorkMode = "work" | "setup";
+type ScorePreset = "all" | "60" | "70" | "80" | "90" | "custom";
+
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function parseNumber(value: string): number | undefined {
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function ReasonBadge({ reason }: { reason: string }) {
-  return (
-    <span className="inline-flex items-center rounded-full bg-secondary text-secondary-foreground px-2 py-0.5 text-xs">
-      {reason}
-    </span>
-  );
+function parseBoolean(value: string): boolean | undefined {
+  const normalized = value.trim().toLowerCase();
+  if (["true", "yes", "1"].includes(normalized)) return true;
+  if (["false", "no", "0"].includes(normalized)) return false;
+  return undefined;
 }
 
-function KPICard({ title, value, icon: Icon }: { title: string; value: string | number; icon: React.ElementType }) {
-  return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{title}</span>
-          <Icon className="h-4 w-4 text-muted-foreground" />
-        </div>
-        <div className="text-2xl font-bold text-foreground">{value}</div>
-      </CardContent>
-    </Card>
-  );
+function buildLeadFromRow(row: CsvRow, mapping: Record<LeadFieldKey, string>, id: number): Lead | null {
+  const name = (row[mapping.name] ?? "").trim();
+  const company = (row[mapping.company] ?? "").trim();
+  const email = (row[mapping.email] ?? "").trim();
+  const source = (row[mapping.source] ?? "").trim() || "Imported CSV";
+  if (!name || !company || !email || !emailRegex.test(email)) return null;
+
+  const legacyScore = Number(row[mapping.score] ?? 0);
+  const now = new Date().toISOString();
+  const breakdown: Lead["scoreBreakdown"] = [{ key: "legacy_score_hint", label: "Legacy score hint", value: Number.isFinite(legacyScore) ? legacyScore : 0 }];
+  const numberInputs: Array<[LeadFieldKey, string]> = [["emailOpens", "input_email_opens"], ["emailClicks", "input_email_clicks"], ["pageViews", "input_page_views"]];
+  numberInputs.forEach(([key, storageKey]) => {
+    if (!mapping[key]) return;
+    const value = parseNumber(row[mapping[key]] ?? "");
+    if (typeof value === "number") breakdown.push({ key: storageKey, label: `CSV ${key}`, value });
+  });
+  const booleanInputs: Array<[LeadFieldKey, string]> = [["demoRequested", "input_demo_requested"], ["industryMatch", "input_industry_match"], ["companySizeFit", "input_company_size_fit"], ["budgetFit", "input_budget_fit"]];
+  booleanInputs.forEach(([key, storageKey]) => {
+    if (!mapping[key]) return;
+    const value = parseBoolean(row[mapping[key]] ?? "");
+    if (typeof value === "boolean") breakdown.push({ key: storageKey, label: `CSV ${key}`, value: value ? 1 : 0 });
+  });
+
+  return {
+    id,
+    rank: id,
+    name,
+    company,
+    score: Number.isFinite(legacyScore) ? Math.round(legacyScore) : 0,
+    tier: "cold",
+    reasons: (row[mapping.reasons] ?? "").split(/[|;,]/).map((item) => item.trim()).filter(Boolean).slice(0, 2),
+    source,
+    lastActivity: (row[mapping.lastActivity] ?? "").trim() || "Imported recently",
+    email,
+    aiExplanation: `${name} from ${company} imported from CSV.`,
+    scoreBreakdown: breakdown,
+    scoredAt: now,
+    scoreVersion: "v0-legacy-import",
+  };
 }
 
-function LeadActions({ lead }: { lead: Lead }) {
-  return (
-    <div className="flex items-center gap-1">
-      <Button variant="ghost" size="icon" className="h-8 w-8" title={`Email ${lead.name}`}>
-        <Mail className="h-4 w-4" />
-      </Button>
-      <Button variant="ghost" size="icon" className="h-8 w-8" title={`Call ${lead.name}`}>
-        <Phone className="h-4 w-4" />
-      </Button>
-      <Button variant="ghost" size="icon" className="h-8 w-8" title={`LinkedIn ${lead.name}`}>
-        <Linkedin className="h-4 w-4" />
-      </Button>
-    </div>
+function downloadIssuesCsv(issues: ImportIssue[]) {
+  const sanitizeCell = (value: string) => {
+    const normalized = value.replace(/"/g, "\"\"");
+    const first = normalized.charAt(0);
+    const guarded = ["=", "+", "-", "@"].includes(first) ? `'${normalized}` : normalized;
+    return `"${guarded}"`;
+  };
+  const header = "row_number,reason,name,company,email";
+  const rows = issues.map(
+    (issue) =>
+      `${issue.rowNumber},${sanitizeCell(issue.reason)},${sanitizeCell(issue.name)},${sanitizeCell(issue.company)},${sanitizeCell(issue.email)}`,
   );
+  const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "lead-import-issues.csv";
+  link.click();
 }
 
-function AppSidebar() {
-  return (
-    <Sidebar collapsible="icon" className="border-r">
-      <SidebarContent className="bg-sidebar">
-        <div className="p-4 border-b border-sidebar-border">
-          <span className="text-base font-bold text-sidebar-foreground">
-            Lead<span className="text-sidebar-primary">Scorer</span>
-          </span>
-        </div>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <NavLink to="/dashboard" end activeClassName="bg-sidebar-accent text-sidebar-accent-foreground">
-                    <Users className="mr-2 h-4 w-4" />
-                    <span>Leads</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <NavLink to="/dashboard/analytics" activeClassName="bg-sidebar-accent text-sidebar-accent-foreground">
-                    <BarChart3 className="mr-2 h-4 w-4" />
-                    <span>Analytics</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <NavLink to="/dashboard/settings" activeClassName="bg-sidebar-accent text-sidebar-accent-foreground">
-                    <Settings className="mr-2 h-4 w-4" />
-                    <span>Settings</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <div className="mt-auto p-4 border-t border-sidebar-border">
-          <div className="flex items-center gap-2">
-            <Avatar className="h-8 w-8">
-              <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground text-xs">JD</AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-sidebar-foreground truncate">Jane Doe</div>
-              <div className="text-xs text-sidebar-foreground/60 truncate">jane@company.com</div>
-            </div>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-sidebar-foreground/60 hover:text-sidebar-foreground">
-              <LogOut className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </SidebarContent>
-    </Sidebar>
-  );
+function toClampedScore(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
 }
 
 const Dashboard = () => {
-  const [expandedRow, setExpandedRow] = useState<number | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sourceFilter, setSourceFilter] = useState("all");
+  const { toast } = useToast();
+  const { rescore } = useLeadScoring();
+  const [mode, setMode] = useState<WorkMode>("work");
+  const [leads, setLeads] = useState<Lead[]>(() => loadLeadsFromStorage());
+  const [applyScoringOnImport, setApplyScoringOnImport] = useState(true);
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
   const [tierFilter, setTierFilter] = useState("all");
-  const [engagementRange, setEngagementRange] = useState([0]);
-  const [date, setDate] = useState<Date>();
+  const [scorePreset, setScorePreset] = useState<ScorePreset>("all");
+  const [customMinScoreInput, setCustomMinScoreInput] = useState("75");
 
-  const filteredLeads = mockLeads.filter((lead) => {
-    if (searchQuery && !lead.name.toLowerCase().includes(searchQuery.toLowerCase()) && !lead.company.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    if (sourceFilter !== "all" && lead.source !== sourceFilter) return false;
+  const importer = useLeadImport<LeadFieldKey>({ leadFields, buildLeadFromRow });
+
+  const effectiveMinScore = useMemo(() => {
+    if (scorePreset === "all") return 0;
+    if (scorePreset === "custom") return toClampedScore(Number(customMinScoreInput));
+    return Number(scorePreset);
+  }, [customMinScoreInput, scorePreset]);
+
+  const filtered = useMemo(() => leads.filter((lead) => {
+    if (search && !`${lead.name} ${lead.company}`.toLowerCase().includes(search.toLowerCase())) return false;
     if (tierFilter !== "all" && lead.tier !== tierFilter) return false;
-    if (lead.score < engagementRange[0]) return false;
+    if (lead.score < effectiveMinScore) return false;
     return true;
-  });
+  }), [effectiveMinScore, leads, search, tierFilter]);
 
-  const sources = [...new Set(mockLeads.map((l) => l.source))];
+  const kpis = useMemo(() => ({
+    total: leads.length,
+    firstContact: formatHoursAverage(leads),
+    precision: formatPrecisionAt10(leads),
+    lift: formatLift(leads),
+  }), [leads]);
+
+  const handleImport = async () => {
+    const result = await importer.importRows();
+    if (result.leads.length === 0) return;
+    const imported = result.leads.map((lead, index) => ({ ...lead, id: index + 1, rank: index + 1 }));
+    const next = rescore(imported, "import").leads;
+    setLeads(next);
+    saveLeadsToStorage(next);
+    setMode("work");
+  };
+
+  const handleManualRescore = () => {
+    const result = rescore(leads, "manual_rescore");
+    setLeads(result.leads);
+    saveLeadsToStorage(result.leads);
+    toast({ title: "Re-score complete", description: `${result.run.leadCount} leads recalculated.` });
+  };
 
   return (
-    <SidebarProvider>
-      <div className="min-h-screen flex w-full">
-        <AppSidebar />
-        <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-12 flex items-center border-b px-4 bg-card">
-            <SidebarTrigger className="mr-3" />
-            <h1 className="text-lg font-semibold text-foreground">Lead Queue</h1>
-          </header>
+    <DashboardShell title="Lead Queue">
+      <div className="space-y-4">
+        <div className="flex gap-2">
+          <Button variant={mode === "work" ? "default" : "outline"} onClick={() => setMode("work")}>Work Mode</Button>
+          <Button variant={mode === "setup" ? "default" : "outline"} onClick={() => setMode("setup")}>Setup Mode</Button>
+          {mode === "work" && <Button variant="outline" onClick={handleManualRescore}><RefreshCcw className="mr-2 h-4 w-4" />Re-score now</Button>}
+        </div>
 
-          <main className="flex-1 p-4 md:p-6 space-y-6 overflow-auto">
-            {/* Filters */}
-            <div className="flex flex-wrap gap-3 items-center">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Search leads..." className="pl-9 w-56" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+        {mode === "setup" && (
+          <Card>
+            <CardHeader><CardTitle className="text-base">CSV Import and Scoring</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <Input type="file" accept=".csv,text/csv" onChange={importer.handleCsvFile} disabled={importer.isImporting || importer.isParsingFile} />
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <span className="text-sm text-muted-foreground">Apply scoring on import</span>
+                <Switch checked={applyScoringOnImport} onCheckedChange={setApplyScoringOnImport} />
               </div>
-              <Select value={sourceFilter} onValueChange={setSourceFilter}>
-                <SelectTrigger className="w-36"><SelectValue placeholder="Source" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Sources</SelectItem>
-                  {sources.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={tierFilter} onValueChange={setTierFilter}>
-                <SelectTrigger className="w-32"><SelectValue placeholder="Priority" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Tiers</SelectItem>
-                  <SelectItem value="hot">🔥 Hot</SelectItem>
-                  <SelectItem value="warm">🟡 Warm</SelectItem>
-                  <SelectItem value="cold">🔵 Cold</SelectItem>
-                </SelectContent>
-              </Select>
-              <div className="flex items-center gap-2 min-w-[160px]">
-                <span className="text-xs text-muted-foreground whitespace-nowrap">Min score:</span>
-                <Slider value={engagementRange} onValueChange={setEngagementRange} max={100} step={5} className="w-24" />
-                <span className="text-xs font-medium w-6">{engagementRange[0]}</span>
+              {importer.uploadStatus && <p className="text-sm text-muted-foreground">{importer.uploadStatus}</p>}
+              {importer.uploadError && <p className="inline-flex items-center gap-2 text-sm text-destructive"><AlertCircle className="h-4 w-4" />{importer.uploadError}</p>}
+              {importer.csvHeaders.length > 0 && (
+                <>
+                  <div className="grid gap-2 md:grid-cols-2">{leadFields.map((field) => (
+                    <div key={field.key} className="space-y-1">
+                      <p className="text-xs text-muted-foreground">{field.label}{field.required ? " (required)" : ""}</p>
+                      <Select value={importer.mapping[field.key] || "unmapped"} onValueChange={(value) => importer.setMapping((prev) => ({ ...prev, [field.key]: value === "unmapped" ? "" : value }))}>
+                        <SelectTrigger><SelectValue placeholder="Select column" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unmapped">Unmapped</SelectItem>
+                          {importer.csvHeaders.map((header) => <SelectItem key={`${field.key}-${header}`} value={header}>{header}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}</div>
+                  <div className="flex gap-2">
+                    <Button onClick={handleImport}><Upload className="mr-2 h-4 w-4" />Import Leads</Button>
+                    {importer.importIssues.length > 0 && <Button variant="outline" onClick={() => downloadIssuesCsv(importer.importIssues)}><Download className="mr-2 h-4 w-4" />Issue Report</Button>}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {mode === "work" && (
+          <>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Total Leads</p><p className="text-2xl font-bold">{kpis.total}</p></CardContent></Card>
+              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Avg First Contact</p><p className="text-2xl font-bold">{kpis.firstContact}</p></CardContent></Card>
+              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Precision@10</p><p className="text-2xl font-bold">{kpis.precision}</p></CardContent></Card>
+              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Lift</p><p className="text-2xl font-bold">{kpis.lift}</p></CardContent></Card>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="w-56 pl-8" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
+              <Select value={tierFilter} onValueChange={setTierFilter}><SelectTrigger className="w-32"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All tiers</SelectItem><SelectItem value="hot">Hot</SelectItem><SelectItem value="warm">Warm</SelectItem><SelectItem value="cold">Cold</SelectItem></SelectContent></Select>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Score filter</span>
+                <div className="inline-flex rounded-md border p-1">
+                  {[
+                    ["all", "All"],
+                    ["60", "60+"],
+                    ["70", "70+"],
+                    ["80", "80+"],
+                    ["90", "90+"],
+                    ["custom", "Custom"],
+                  ].map(([value, label]) => (
+                    <Button
+                      key={value}
+                      size="sm"
+                      variant={scorePreset === value ? "default" : "ghost"}
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setScorePreset(value as ScorePreset)}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+                {scorePreset === "custom" && (
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    className="h-8 w-20"
+                    value={customMinScoreInput}
+                    onChange={(event) => setCustomMinScoreInput(event.target.value)}
+                  />
+                )}
               </div>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className={cn("text-xs", !date && "text-muted-foreground")}>
-                    {date ? format(date, "MMM d, yyyy") : "Date range"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={date} onSelect={setDate} className="p-3 pointer-events-auto" />
-                </PopoverContent>
-              </Popover>
             </div>
-
-            {/* KPIs */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <KPICard title="Total Leads" value={kpiData.totalLeads} icon={Users} />
-              <KPICard title="Avg. First Contact" value={kpiData.timeToFirstContact} icon={Clock} />
-              <KPICard title="Precision@10" value={kpiData.precisionAt10} icon={Target} />
-              <KPICard title="Lift" value={kpiData.lift} icon={TrendingUp} />
-            </div>
-
-            {/* Lead Table */}
             <Card>
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">#</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead className="hidden md:table-cell">Company</TableHead>
-                    <TableHead>Score</TableHead>
-                    <TableHead className="hidden lg:table-cell">Reasons</TableHead>
-                    <TableHead className="hidden md:table-cell">Source</TableHead>
-                    <TableHead className="hidden lg:table-cell">Last Activity</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
+                <TableHeader><TableRow><TableHead>#</TableHead><TableHead>Name</TableHead><TableHead>Company</TableHead><TableHead>Score</TableHead><TableHead>Tier</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                 <TableBody>
-                  {filteredLeads.map((lead) => (
-                    <Collapsible key={lead.id} open={expandedRow === lead.id} onOpenChange={(open) => setExpandedRow(open ? lead.id : null)} asChild>
+                  {filtered.map((lead) => (
+                    <Collapsible key={lead.id} open={expanded === lead.id} onOpenChange={(isOpen) => setExpanded(isOpen ? lead.id : null)} asChild>
                       <>
                         <CollapsibleTrigger asChild>
                           <TableRow className="cursor-pointer">
-                            <TableCell className="font-medium text-muted-foreground">{lead.rank}</TableCell>
-                            <TableCell>
-                              <div className="font-medium text-foreground">{lead.name}</div>
-                              <div className="text-xs text-muted-foreground md:hidden">{lead.company}</div>
-                            </TableCell>
-                            <TableCell className="hidden md:table-cell text-muted-foreground">{lead.company}</TableCell>
-                            <TableCell><ScoreBadge score={lead.score} tier={lead.tier} /></TableCell>
-                            <TableCell className="hidden lg:table-cell">
-                              <div className="flex gap-1 flex-wrap">
-                                {lead.reasons.map((r) => <ReasonBadge key={r} reason={r} />)}
-                              </div>
-                            </TableCell>
-                            <TableCell className="hidden md:table-cell text-muted-foreground text-sm">{lead.source}</TableCell>
-                            <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">{lead.lastActivity}</TableCell>
-                            <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                              <LeadActions lead={lead} />
-                            </TableCell>
+                            <TableCell>{lead.rank}</TableCell><TableCell>{lead.name}</TableCell><TableCell>{lead.company}</TableCell><TableCell>{lead.score}</TableCell><TableCell>{lead.tier}</TableCell>
+                            <TableCell className="text-right"><div className="inline-flex gap-1"><Button variant="ghost" size="icon"><Mail className="h-4 w-4" /></Button><Button variant="ghost" size="icon"><Phone className="h-4 w-4" /></Button><Button variant="ghost" size="icon"><Linkedin className="h-4 w-4" /></Button></div></TableCell>
                           </TableRow>
                         </CollapsibleTrigger>
                         <CollapsibleContent asChild>
-                          <TableRow className="bg-muted/30 hover:bg-muted/30">
-                            <TableCell colSpan={8} className="py-4">
-                              <div className="max-w-2xl">
-                                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">AI Explanation</div>
-                                <p className="text-sm text-foreground leading-relaxed">{lead.aiExplanation}</p>
-                                <div className="flex gap-1 mt-3 lg:hidden flex-wrap">
-                                  {lead.reasons.map((r) => <ReasonBadge key={r} reason={r} />)}
-                                </div>
-                              </div>
-                            </TableCell>
-                          </TableRow>
+                          <TableRow><TableCell colSpan={6} className="space-y-2 bg-muted/30">
+                            <p className="text-sm">{lead.aiExplanation}</p>
+                            <div className="grid gap-1 md:grid-cols-2">{lead.scoreBreakdown.map((item) => <div key={`${lead.id}-${item.key}`} className="flex items-center justify-between rounded border bg-background px-2 py-1 text-xs"><span className="text-muted-foreground">{item.label}</span><span className={cn("font-semibold", item.value < 0 && "text-destructive")}>{item.value >= 0 ? `+${item.value}` : item.value}</span></div>)}</div>
+                          </TableCell></TableRow>
                         </CollapsibleContent>
                       </>
                     </Collapsible>
                   ))}
-                  {filteredLeads.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No leads match your filters.</TableCell>
-                    </TableRow>
-                  )}
+                  {filtered.length === 0 && <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No leads found.</TableCell></TableRow>}
                 </TableBody>
               </Table>
             </Card>
-          </main>
-        </div>
+          </>
+        )}
       </div>
-    </SidebarProvider>
+    </DashboardShell>
   );
 };
 

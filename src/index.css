@@ -107,3 +107,70 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  .surface-soft {
+    background:
+      radial-gradient(120% 80% at 20% 0%, hsl(var(--accent) / 0.08) 0%, transparent 55%),
+      radial-gradient(110% 70% at 85% 100%, hsl(var(--primary) / 0.08) 0%, transparent 60%),
+      hsl(var(--card));
+  }
+
+  .surface-elevated {
+    border: 1px solid hsl(var(--border) / 0.9);
+    background: linear-gradient(180deg, hsl(var(--card)) 0%, hsl(var(--background)) 100%);
+    box-shadow: 0 18px 44px -30px hsl(var(--primary) / 0.45);
+  }
+
+  .surface-contrast {
+    border: 1px solid hsl(var(--border) / 0.9);
+    background:
+      radial-gradient(120% 100% at 85% 0%, hsl(var(--accent) / 0.1) 0%, transparent 60%),
+      linear-gradient(180deg, hsl(var(--card)) 0%, hsl(var(--background)) 100%);
+    box-shadow: 0 24px 52px -34px hsl(var(--primary) / 0.5);
+  }
+
+  .story-divider {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--accent) / 0.05) 0%,
+      hsl(var(--accent) / 0.5) 35%,
+      hsl(var(--primary) / 0.28) 100%
+    );
+  }
+
+  .section-kicker {
+    @apply text-xs font-semibold uppercase tracking-[0.18em] text-accent;
+  }
+
+  .proof-chip {
+    @apply rounded-full border border-border/80 bg-card/70 px-3 py-1 text-[11px] font-medium text-muted-foreground backdrop-blur;
+  }
+
+  .cta-mesh {
+    background:
+      radial-gradient(120% 90% at 0% 0%, hsl(var(--accent) / 0.14) 0%, transparent 60%),
+      radial-gradient(90% 80% at 100% 100%, hsl(var(--primary) / 0.14) 0%, transparent 58%);
+  }
+
+  .reveal-scroll {
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity 420ms ease, transform 420ms ease;
+    will-change: transform, opacity;
+  }
+
+  .reveal-scroll.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-scroll,
+  .reveal-scroll.is-visible {
+    transition: none;
+    opacity: 1;
+    transform: none;
+  }
+}
