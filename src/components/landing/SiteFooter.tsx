@@ -1,12 +1,12 @@
 export function SiteFooter() {
   return (
     <footer className="border-t bg-card/90 footer-sheen">
-      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-5 px-6 py-7 sm:flex-row">
+      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-5 px-6 py-8 sm:flex-row">
         <div className="text-center sm:text-left">
           <span className="text-sm font-semibold tracking-tight text-primary">
             LeadScorer<span className="text-accent">.ai</span>
           </span>
-          <p className="mt-1 text-xs text-muted-foreground">Built for small sales teams with limited time.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Built for small sales teams that need fast lead decisions.</p>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2 text-sm text-muted-foreground sm:justify-end sm:gap-3">
           <a href="/privacy" className="rounded-md px-2 py-1.5 transition-colors hover:bg-background/70 hover:text-foreground">
