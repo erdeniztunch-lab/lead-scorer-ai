@@ -1,25 +1,9 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { ensureUserBootstrap, isGuestSession, onAuthStateChange } from "@/lib/session";
-import { apiFetch } from "@/lib/apiClient";
+import { isGuestSession } from "@/lib/session";
 
 interface ProtectedRouteProps {
   children: JSX.Element;
-}
-
-async function verifySessionWithBackend(): Promise<boolean> {
-  const response = await apiFetch("/api/auth/me", { method: "GET" });
-
-  return response.ok;
-}
-
-async function verifyAndBootstrap(): Promise<boolean> {
-  const isValidSession = await verifySessionWithBackend();
-  if (!isValidSession) {
-    return false;
-  }
-  const bootstrap = await ensureUserBootstrap();
-  return bootstrap.ok;
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
@@ -28,45 +12,8 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const [isAllowed, setIsAllowed] = useState(false);
 
   useEffect(() => {
-    let mounted = true;
-
-    const run = async () => {
-      if (isGuestSession()) {
-        setIsAllowed(true);
-        setIsChecking(false);
-        return;
-      }
-      const ok = await verifyAndBootstrap();
-      if (!mounted) {
-        return;
-      }
-      setIsAllowed(ok);
-      setIsChecking(false);
-    };
-
-    void run();
-
-    const subscription = onAuthStateChange(async () => {
-      if (isGuestSession()) {
-        if (!mounted) {
-          return;
-        }
-        setIsAllowed(true);
-        setIsChecking(false);
-        return;
-      }
-      const ok = await verifyAndBootstrap();
-      if (!mounted) {
-        return;
-      }
-      setIsAllowed(ok);
-      setIsChecking(false);
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
+    setIsAllowed(isGuestSession());
+    setIsChecking(false);
   }, []);
 
   if (isChecking) {

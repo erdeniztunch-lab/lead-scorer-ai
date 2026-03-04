@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { apiFetch } from "@/lib/apiClient";
 import { mockLeads } from "@/data/mockLeads";
-import { isGuestSession } from "@/lib/session";
 import { DEFAULT_SCORING_CONFIG, scoreLeads } from "@/lib/scoringEngine";
 
 interface AnalyticsSummary {
@@ -28,7 +26,6 @@ interface AnalyticsSummary {
 }
 
 const DashboardAnalytics = () => {
-  const guestMode = isGuestSession();
   const [summary, setSummary] = useState<AnalyticsSummary>({
     scoreDistribution: { "0-39": 0, "40-59": 0, "60-79": 0, "80-100": 0 },
     topReasons: [],
@@ -39,109 +36,90 @@ const DashboardAnalytics = () => {
   });
 
   useEffect(() => {
-    const load = async () => {
-      if (guestMode) {
-        const leads = scoreLeads(mockLeads, DEFAULT_SCORING_CONFIG);
-        const distribution = leads.reduce<Record<string, number>>(
-          (acc, lead) => {
-            if (lead.score >= 80) acc["80-100"] += 1;
-            else if (lead.score >= 60) acc["60-79"] += 1;
-            else if (lead.score >= 40) acc["40-59"] += 1;
-            else acc["0-39"] += 1;
-            return acc;
-          },
-          { "0-39": 0, "40-59": 0, "60-79": 0, "80-100": 0 },
-        );
-        const reasonCounts = new Map<string, number>();
-        leads.forEach((lead) => {
-          lead.reasons.forEach((reason) => {
-            reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
-          });
+    const load = () => {
+      const leads = scoreLeads(mockLeads, DEFAULT_SCORING_CONFIG);
+      const distribution = leads.reduce<Record<string, number>>(
+        (acc, lead) => {
+          if (lead.score >= 80) acc["80-100"] += 1;
+          else if (lead.score >= 60) acc["60-79"] += 1;
+          else if (lead.score >= 40) acc["40-59"] += 1;
+          else acc["0-39"] += 1;
+          return acc;
+        },
+        { "0-39": 0, "40-59": 0, "60-79": 0, "80-100": 0 },
+      );
+      const reasonCounts = new Map<string, number>();
+      leads.forEach((lead) => {
+        lead.reasons.forEach((reason) => {
+          reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
         });
-        const topReasons = [...reasonCounts.entries()]
-          .map(([reason, count]) => ({ reason, count }))
-          .sort((a, b) => b.count - a.count)
-          .slice(0, 5);
-        const signalMap = new Map<string, { label: string; count: number; total: number }>();
-        leads.forEach((lead) => {
-          lead.scoreBreakdown.forEach((item) => {
-            const existing = signalMap.get(item.key) ?? { label: item.label, count: 0, total: 0 };
-            existing.count += 1;
-            existing.total += item.value;
-            signalMap.set(item.key, existing);
-          });
+      });
+      const topReasons = [...reasonCounts.entries()]
+        .map(([reason, count]) => ({ reason, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+      const signalMap = new Map<string, { label: string; count: number; total: number }>();
+      leads.forEach((lead) => {
+        lead.scoreBreakdown.forEach((item) => {
+          const existing = signalMap.get(item.key) ?? { label: item.label, count: 0, total: 0 };
+          existing.count += 1;
+          existing.total += item.value;
+          signalMap.set(item.key, existing);
         });
-        const topSignals = [...signalMap.entries()]
-          .map(([key, value]) => ({
-            key,
-            label: value.label,
-            count: value.count,
-            avgContribution: Number((value.total / Math.max(1, value.count)).toFixed(2)),
-          }))
-          .sort((a, b) => b.count - a.count)
-          .slice(0, 5);
-        const hot = leads.filter((lead) => lead.tier === "hot").length;
-        const warm = leads.filter((lead) => lead.tier === "warm").length;
-        const cold = leads.filter((lead) => lead.tier === "cold").length;
-        setSummary({
-          scoreDistribution: distribution,
-          topReasons,
-          topSignals,
-          tierTrend: [
-            {
-              runId: "guest-session-run",
-              startedAt: new Date().toISOString(),
-              avgScore: Number((leads.reduce((sum, lead) => sum + lead.score, 0) / Math.max(1, leads.length)).toFixed(2)),
-              leadCount: leads.length,
-              hot,
-              warm,
-              cold,
-            },
-          ],
-          configImpact: {
-            fromRunId: null,
-            toRunId: "guest-session-run",
-            avgScoreDelta: 0,
-            hotDelta: 0,
-            warmDelta: 0,
-            coldDelta: 0,
-            leadCountDelta: 0,
-          },
-          lastScoringRun: {
-            trigger_type: "guest_session",
-            config_version: DEFAULT_SCORING_CONFIG.version,
-            started_at: new Date().toISOString(),
-          },
-        });
-        return;
-      }
-
-      const response = await apiFetch("/api/analytics/summary", { method: "GET" });
-      if (!response.ok) {
-        return;
-      }
-      const payload = await response.json();
+      });
+      const topSignals = [...signalMap.entries()]
+        .map(([key, value]) => ({
+          key,
+          label: value.label,
+          count: value.count,
+          avgContribution: Number((value.total / Math.max(1, value.count)).toFixed(2)),
+        }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+      const hot = leads.filter((lead) => lead.tier === "hot").length;
+      const warm = leads.filter((lead) => lead.tier === "warm").length;
+      const cold = leads.filter((lead) => lead.tier === "cold").length;
       setSummary({
-        scoreDistribution: payload.scoreDistribution ?? { "0-39": 0, "40-59": 0, "60-79": 0, "80-100": 0 },
-        topReasons: payload.topReasons ?? [],
-        topSignals: payload.topSignals ?? [],
-        tierTrend: payload.tierTrend ?? [],
-        configImpact: payload.configImpact ?? null,
-        lastScoringRun: payload.lastScoringRun ?? null,
+        scoreDistribution: distribution,
+        topReasons,
+        topSignals,
+        tierTrend: [
+          {
+            runId: "prototype-session-run",
+            startedAt: new Date().toISOString(),
+            avgScore: Number((leads.reduce((sum, lead) => sum + lead.score, 0) / Math.max(1, leads.length)).toFixed(2)),
+            leadCount: leads.length,
+            hot,
+            warm,
+            cold,
+          },
+        ],
+        configImpact: {
+          fromRunId: null,
+          toRunId: "prototype-session-run",
+          avgScoreDelta: 0,
+          hotDelta: 0,
+          warmDelta: 0,
+          coldDelta: 0,
+          leadCountDelta: 0,
+        },
+        lastScoringRun: {
+          trigger_type: "prototype_session",
+          config_version: DEFAULT_SCORING_CONFIG.version,
+          started_at: new Date().toISOString(),
+        },
       });
     };
-    void load();
-  }, [guestMode]);
+    load();
+  }, []);
 
   return (
     <DashboardShell title="Analytics">
-      {guestMode && (
-        <Card className="mb-4 border-amber-300 bg-amber-50">
-          <CardContent className="p-3 text-sm text-amber-900">
-            Session-only mode is active. Analytics is based on demo/session data and is not persisted.
-          </CardContent>
-        </Card>
-      )}
+      <Card className="mb-4 border-amber-300 bg-amber-50">
+        <CardContent className="p-3 text-sm text-amber-900">
+          Prototype mode is active. Analytics is based on session/mock data and is not persisted.
+        </CardContent>
+      </Card>
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader><CardTitle className="text-base">Score Distribution</CardTitle></CardHeader>

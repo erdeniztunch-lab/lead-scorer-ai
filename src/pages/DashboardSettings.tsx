@@ -4,10 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
-import { apiFetch } from "@/lib/apiClient";
 import { useToast } from "@/hooks/use-toast";
 import { DEFAULT_SCORING_CONFIG, mergeScoringConfig, validateScoringConfig, type ScoringConfig } from "@/lib/scoringEngine";
-import { isGuestSession } from "@/lib/session";
+import { mockLeads } from "@/data/mockLeads";
+import { scoreLeads } from "@/lib/scoringEngine";
 
 interface ScoreRunRow {
   id: string;
@@ -22,7 +22,6 @@ const sourceKeys = ["referral", "webinar", "website", "linkedin", "google ads", 
 
 const DashboardSettings = () => {
   const { toast } = useToast();
-  const guestMode = isGuestSession();
   const [draft, setDraft] = useState<ScoringConfig>(DEFAULT_SCORING_CONFIG);
   const [runs, setRuns] = useState<ScoreRunRow[]>([]);
   const [validationError, setValidationError] = useState("");
@@ -32,49 +31,26 @@ const DashboardSettings = () => {
   const totals = useMemo(() => stats, [stats]);
 
   const loadConfig = async () => {
-    if (guestMode) {
-      setDraft(DEFAULT_SCORING_CONFIG);
-      return;
-    }
-    const response = await apiFetch("/api/scoring-config", { method: "GET" });
-    if (!response.ok) {
-      toast({ title: "Failed to load config", description: "API request failed." });
-      return;
-    }
-    const payload = await response.json();
-    setDraft(mergeScoringConfig(payload.config));
+    setDraft(DEFAULT_SCORING_CONFIG);
   };
 
   const loadRuns = async () => {
-    if (guestMode) {
-      setRuns([]);
-      return;
-    }
-    const response = await apiFetch("/api/scoring/runs?page=1&pageSize=5", { method: "GET" });
-    if (!response.ok) return;
-    const payload = await response.json();
-    setRuns(payload.items ?? []);
+    setRuns([]);
   };
 
   const loadKpis = async () => {
-    if (guestMode) {
-      setStats({ total: 0, hot: 0, warm: 0, cold: 0 });
-      return;
-    }
-    const response = await apiFetch("/api/kpis", { method: "GET" });
-    if (!response.ok) return;
-    const payload = await response.json();
+    const scored = scoreLeads(mockLeads, draft);
     setStats({
-      total: payload.totalLeads ?? 0,
-      hot: payload.tierCounts?.hot ?? 0,
-      warm: payload.tierCounts?.warm ?? 0,
-      cold: payload.tierCounts?.cold ?? 0,
+      total: scored.length,
+      hot: scored.filter((lead) => lead.tier === "hot").length,
+      warm: scored.filter((lead) => lead.tier === "warm").length,
+      cold: scored.filter((lead) => lead.tier === "cold").length,
     });
   };
 
   useEffect(() => {
     void Promise.all([loadConfig(), loadRuns(), loadKpis()]);
-  }, [guestMode]);
+  }, []);
 
   const updateNumber = (path: string, value: number) => {
     setDraft((current) => {
@@ -122,50 +98,24 @@ const DashboardSettings = () => {
   };
 
   const handleSaveAndRescore = async () => {
-    if (guestMode) {
-      toast({ title: "Guest mode", description: "Settings are read-only in guest mode." });
-      return;
-    }
     const error = validateScoringConfig(draft);
     setValidationError(error ? "Config is invalid." : "");
     if (error) return;
-
-    const versioned = { ...draft, version: `v1.${Date.now()}` };
-    const saveResponse = await apiFetch("/api/scoring-config", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ config: versioned }),
-    });
-    if (!saveResponse.ok) {
-      toast({ title: "Save failed", description: "Could not persist scoring config." });
-      return;
-    }
-
-    const rescoreResponse = await apiFetch("/api/scoring/rescore", { method: "POST" });
-    if (!rescoreResponse.ok) {
-      toast({ title: "Re-score failed", description: "Could not rescore leads." });
-      return;
-    }
-
-    const payload = await rescoreResponse.json();
+    await loadKpis();
     toast({
-      title: "Config saved",
-      description: `Rescored ${payload.rescoredCount} leads with ${payload.configVersion}.`,
+      title: "Prototype mode",
+      description: "Config applied locally for preview. No backend persistence.",
     });
-
-    await Promise.all([loadConfig(), loadRuns(), loadKpis()]);
   };
 
   return (
     <DashboardShell title="Settings">
       <div className="space-y-4">
-        {guestMode && (
-          <Card className="border-amber-300 bg-amber-50">
-            <CardContent className="p-3 text-sm text-amber-900">
-              Session-only mode is active. Settings are read-only and changes are not persisted.
-            </CardContent>
-          </Card>
-        )}
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="p-3 text-sm text-amber-900">
+            Prototype mode is active. Settings are local preview only and are not persisted.
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader><CardTitle className="text-base">Scoring Preset</CardTitle></CardHeader>
           <CardContent className="space-y-2">
@@ -234,7 +184,7 @@ const DashboardSettings = () => {
         </Collapsible>
 
         {validationError && <p className="text-sm text-destructive">{validationError}</p>}
-        <Button onClick={handleSaveAndRescore} disabled={guestMode}>
+        <Button onClick={handleSaveAndRescore}>
           Save and re-score all leads
         </Button>
 

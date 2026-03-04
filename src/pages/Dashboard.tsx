@@ -14,7 +14,6 @@ import { DEFAULT_SCORING_CONFIG, scoreLead, scoreLeads } from "@/lib/scoringEngi
 import { isGuestSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { apiFetch } from "@/lib/apiClient";
 
 const leadFields = [
   { key: "name", label: "Name", required: true },
@@ -116,8 +115,8 @@ const Dashboard = () => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [guestLeads, setGuestLeads] = useState<Lead[]>(() => scoreLeads(mockLeads, DEFAULT_SCORING_CONFIG));
   const [kpis, setKpis] = useState<KpiState>({ totalLeads: 0, hotLeads: 0, warmLeads: 0, coldLeads: 0, avgScore: 0 });
-  const [isLoadingLeads, setIsLoadingLeads] = useState(false);
-  const [isLoadingKpis, setIsLoadingKpis] = useState(false);
+  const isLoadingLeads = false;
+  const isLoadingKpis = false;
   const [expanded, setExpanded] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [tierFilter, setTierFilter] = useState("all");
@@ -182,93 +181,45 @@ const Dashboard = () => {
     return next;
   }, [guestLeads, qualityProfile]);
 
-  const fetchLeads = async () => {
-    if (guestMode) {
-      const filtered = filteredGuestLeads
-        .filter((lead) => (tierFilter === "all" ? true : lead.tier === tierFilter))
-        .filter((lead) => {
-          if (!search.trim()) return true;
-          const term = search.trim().toLowerCase();
-          return (
-            lead.name.toLowerCase().includes(term) ||
-            lead.company.toLowerCase().includes(term) ||
-            lead.email.toLowerCase().includes(term)
-          );
-        })
-        .sort((a, b) => b.score - a.score)
-        .map((lead, index) => ({ ...lead, rank: index + 1 }));
+  const fetchLeads = () => {
+    const filtered = filteredGuestLeads
+      .filter((lead) => (tierFilter === "all" ? true : lead.tier === tierFilter))
+      .filter((lead) => {
+        if (!search.trim()) return true;
+        const term = search.trim().toLowerCase();
+        return (
+          lead.name.toLowerCase().includes(term) ||
+          lead.company.toLowerCase().includes(term) ||
+          lead.email.toLowerCase().includes(term)
+        );
+      })
+      .sort((a, b) => b.score - a.score)
+      .map((lead, index) => ({ ...lead, rank: index + 1 }));
 
-      const pageSize = 25;
-      const nextTotalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-      const safePage = Math.min(page, nextTotalPages);
-      const start = (safePage - 1) * pageSize;
-      const items = filtered.slice(start, start + pageSize);
+    const pageSize = 25;
+    const nextTotalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    const safePage = Math.min(page, nextTotalPages);
+    const start = (safePage - 1) * pageSize;
+    const items = filtered.slice(start, start + pageSize);
 
-      setLeads(items);
-      setTotalPages(nextTotalPages);
-      if (safePage !== page) {
-        setPage(safePage);
-      }
-      return;
+    setLeads(items);
+    setTotalPages(nextTotalPages);
+    if (safePage !== page) {
+      setPage(safePage);
     }
-
-    setIsLoadingLeads(true);
-    const params = new URLSearchParams({
-      page: String(page),
-      pageSize: "25",
-      sortBy: "score",
-      sortDir: "desc",
-      qualityProfile,
-    });
-    if (search) params.set("search", search);
-    if (tierFilter !== "all") params.set("tier", tierFilter);
-
-    const response = await apiFetch(`/api/leads?${params.toString()}`, { method: "GET" });
-    if (!response.ok) {
-      setIsLoadingLeads(false);
-      toast({ title: "Failed to load leads", description: "API request failed." });
-      return;
-    }
-    const payload = (await response.json()) as { items: Lead[]; totalPages: number };
-    setLeads(payload.items ?? []);
-    setTotalPages(payload.totalPages ?? 1);
-    setIsLoadingLeads(false);
   };
 
-  const fetchKpis = async () => {
-    if (guestMode) {
-      setKpis(buildGuestKpis(guestLeads));
-      return;
-    }
-
-    setIsLoadingKpis(true);
-    const response = await apiFetch("/api/kpis", { method: "GET" });
-    if (!response.ok) {
-      setIsLoadingKpis(false);
-      return;
-    }
-    const payload = (await response.json()) as {
-      totalLeads?: number;
-      avgScore?: number;
-      tierCounts?: { hot?: number; warm?: number; cold?: number };
-    };
-    setKpis({
-      totalLeads: payload.totalLeads ?? 0,
-      hotLeads: payload.tierCounts?.hot ?? 0,
-      warmLeads: payload.tierCounts?.warm ?? 0,
-      coldLeads: payload.tierCounts?.cold ?? 0,
-      avgScore: payload.avgScore ?? 0,
-    });
-    setIsLoadingKpis(false);
+  const fetchKpis = () => {
+    setKpis(buildGuestKpis(guestLeads));
   };
 
   useEffect(() => {
-    void fetchLeads();
-  }, [page, search, tierFilter, qualityProfile, guestMode, guestLeads, filteredGuestLeads]);
+    fetchLeads();
+  }, [page, search, tierFilter, qualityProfile, guestLeads, filteredGuestLeads]);
 
   useEffect(() => {
-    void fetchKpis();
-  }, [guestMode, guestLeads]);
+    fetchKpis();
+  }, [guestLeads]);
 
   const handleImport = async () => {
     if (!importer.csvContent) {
@@ -288,55 +239,25 @@ const Dashboard = () => {
       return;
     }
 
-    if (guestMode) {
-      const result = await importer.importRows();
-      if (result.leads.length === 0) {
-        return;
-      }
-      const merged = scoreLeads(
-        [...guestLeads, ...result.leads.map((lead) => ({ ...lead, id: 0, rank: 0 }))],
-        DEFAULT_SCORING_CONFIG,
-      );
-      setGuestLeads(merged);
-      setMode("work");
-      setPage(1);
-      setPreview(null);
-      toast({
-        title: "Guest import completed",
-        description: `${result.leads.length} lead(s) imported to this session.`,
-      });
+    const result = await importer.importRows();
+    if (result.leads.length === 0) {
       return;
     }
-
-    const response = await apiFetch("/api/leads/import", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        csvContent: importer.csvContent,
-        mapping: importer.mapping,
-      }),
-    });
-
-    const payload = await response.json();
-    if (!response.ok) {
-      importer.setUploadError(payload?.message ?? "Import request failed.");
-      if (Array.isArray(payload?.issues)) {
-        importer.setImportIssues(payload.issues as ImportIssue[]);
-      }
-      return;
-    }
-
-    importer.setUploadStatus(`${payload.importedCount} lead(s) imported.${payload.skippedCount > 0 ? ` Skipped ${payload.skippedCount} row(s).` : ""}`);
+    const merged = scoreLeads(
+      [...guestLeads, ...result.leads.map((lead) => ({ ...lead, id: 0, rank: 0 }))],
+      DEFAULT_SCORING_CONFIG,
+    );
+    setGuestLeads(merged);
+    importer.setUploadStatus(`${result.leads.length} lead(s) imported.`);
     toast({
       title: "Import completed",
-      description: "Leads imported and scored via API.",
+      description: "Leads imported and scored in prototype mode.",
     });
     setMode("work");
     setPage(1);
     setPreview(null);
-    await Promise.all([fetchLeads(), fetchKpis()]);
+    fetchLeads();
+    fetchKpis();
   };
 
   const handlePreviewImport = async () => {
@@ -355,52 +276,27 @@ const Dashboard = () => {
     }
 
     setIsPreviewing(true);
-    if (guestMode) {
-      const rowCount = importer.csvRows.length;
-      const guestPreview: ImportPreviewResponse = {
-        rowCount,
-        validCount: rowCount,
-        invalidCount: 0,
-        duplicateCount: 0,
-        issuesByType: {
-          missing_required: 0,
-          invalid_email: 0,
-          duplicate_in_file: 0,
-          duplicate_in_db: 0,
-          invalid_boolean: 0,
-          invalid_number: 0,
-          unknown_source: 0,
-        },
-        sampleIssues: [],
-      };
-      setPreview(guestPreview);
-      setIsPreviewing(false);
-      return;
-    }
-
-    const response = await apiFetch("/api/leads/import/preview", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const rowCount = importer.csvRows.length;
+    const guestPreview: ImportPreviewResponse = {
+      rowCount,
+      validCount: rowCount,
+      invalidCount: 0,
+      duplicateCount: 0,
+      issuesByType: {
+        missing_required: 0,
+        invalid_email: 0,
+        duplicate_in_file: 0,
+        duplicate_in_db: 0,
+        invalid_boolean: 0,
+        invalid_number: 0,
+        unknown_source: 0,
       },
-      body: JSON.stringify({
-        csvContent: importer.csvContent,
-        mapping: importer.mapping,
-      }),
-    });
-
-    const payload = await response.json();
+      sampleIssues: [],
+    };
+    setPreview(guestPreview);
     setIsPreviewing(false);
-    if (!response.ok) {
-      importer.setUploadError(payload?.message ?? "Preview request failed.");
-      return;
-    }
-
-    setPreview(payload as ImportPreviewResponse);
-    importer.setImportIssues((payload?.sampleIssues ?? []) as ImportIssue[]);
-    importer.setUploadStatus(
-      `Preview ready: ${payload.validCount}/${payload.rowCount} rows valid, ${payload.invalidCount} invalid.`,
-    );
+    importer.setImportIssues([]);
+    importer.setUploadStatus(`Preview ready: ${guestPreview.validCount}/${guestPreview.rowCount} rows valid.`);
   };
 
   return (
