@@ -1,24 +1,32 @@
-# LeadSpark Dashboard (Frontend Prototype)
+# LeadScorer (Frontend Prototype)
 
-This repository is currently in frontend-only prototype mode.
-Backend code has been intentionally removed for now. Phase flows run on local/mock data.
+LeadScorer is a frontend-only product prototype for lead prioritization.
 
-## Stack
+## Core Product
+- CSV-first lead import
+- Explainable scoring (hot/warm/cold + reason breakdown)
+- Queue operations (filter, triage, shortcuts)
+- Analytics narrative (`what changed and why`)
+- Settings governance (impact preview, field validation, snapshots)
+- Demo mode (scenarios, guided tour, local telemetry)
+
+## Tech Stack
 - Vite
 - React
 - TypeScript
-- Tailwind + shadcn/ui
+- Tailwind
+- shadcn/ui (pruned to active components)
 
-## Run locally
+## Local Run
 1. `npm install`
 2. `npm run dev`
 
-## Quality gates
-- `npm test`
+## Quality Gates
 - `npx tsc --noEmit`
+- `npm test`
 - `npm run build`
 
-## Notes
-- Authentication flow is guest-session based for prototype demos.
-- Dashboard, Analytics, and Settings run on local/session data.
-- Backend can be reintroduced later as a separate phase.
+## Runtime Model
+- No backend integration in this repo.
+- Auth is guest-session prototype mode.
+- Data is local/session storage based.

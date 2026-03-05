@@ -1,7 +1,7 @@
 export function SiteFooter() {
   return (
-    <footer className="border-t bg-card/90 footer-sheen">
-      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-5 px-6 py-8 sm:flex-row">
+    <footer className="footer-sheen border-t border-border/35 bg-card/85">
+      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-5 px-6 py-10 sm:flex-row">
         <div className="text-center sm:text-left">
           <span className="text-sm font-semibold tracking-tight text-primary">
             LeadScorer<span className="text-accent">.ai</span>

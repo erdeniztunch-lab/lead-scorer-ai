@@ -49,6 +49,16 @@
     --score-hot-bg: 15 80% 95%;
     --score-warm-bg: 40 90% 95%;
     --score-cold-bg: 220 15% 95%;
+
+    --landing-bg-top: 0 0% 100%;
+    --landing-bg-bottom: 210 28% 96%;
+    --glass-bg: 0 0% 100%;
+    --glass-border: 210 22% 78%;
+    --glass-highlight: 0 0% 100%;
+    --accent-soft-glow: 150 60% 45%;
+    --accent-hard-glow: 150 62% 42%;
+    --text-strong: 220 52% 14%;
+    --text-soft: 215 16% 42%;
   }
 
   .dark {
@@ -109,20 +119,113 @@
 }
 
 @layer components {
-  .landing-shell {
+  .landing-atmosphere {
+    /* Landing-only palette
+       Main: #6367FF
+       Secondary: #8494FF
+       Tertiary: #C9BEFF
+       Soft: #FFDBFD
+       White
+    */
+    --accent: 238 100% 69%;
+    --accent-foreground: 0 0% 100%;
+    --primary: 238 88% 28%;
+    --ring: 238 100% 69%;
+    --secondary: 250 100% 96%;
+    --muted: 250 100% 96%;
+    --muted-foreground: 232 22% 38%;
+    --border: 250 70% 88%;
+    --landing-bg-top: 0 0% 100%;
+    --landing-bg-bottom: 304 100% 93%;
+    --glass-bg: 0 0% 100%;
+    --glass-border: 250 100% 87%;
+    --glass-highlight: 0 0% 100%;
+    --accent-soft-glow: 232 100% 76%;
+    --accent-hard-glow: 238 100% 69%;
+    --text-strong: 236 54% 18%;
+    --text-soft: 232 24% 38%;
+
     background:
-      radial-gradient(120% 90% at 12% -8%, hsl(var(--accent) / 0.08) 0%, transparent 54%),
-      radial-gradient(90% 80% at 100% 8%, hsl(var(--primary) / 0.07) 0%, transparent 58%),
-      hsl(var(--background));
+      radial-gradient(120% 90% at 8% -10%, hsl(var(--accent-soft-glow) / 0.18) 0%, transparent 52%),
+      radial-gradient(95% 85% at 100% 6%, hsl(var(--accent-hard-glow) / 0.1) 0%, transparent 56%),
+      linear-gradient(180deg, hsl(var(--landing-bg-top)) 0%, hsl(var(--landing-bg-bottom)) 100%);
   }
 
-  .data-panel {
-    position: relative;
-    border: 1px solid hsl(var(--border) / 0.95);
+  .section-breathing {
+    @apply py-14 md:py-16;
+  }
+
+  .editorial-h1 {
+    @apply text-3xl font-bold leading-tight tracking-tight text-primary md:text-4xl lg:text-5xl;
+  }
+
+  .editorial-h2 {
+    @apply text-3xl font-bold tracking-tight text-primary md:text-4xl;
+  }
+
+  .editorial-body {
+    @apply text-base text-muted-foreground md:text-lg;
+  }
+
+  .glass-panel {
+    border: 1px solid hsl(var(--glass-border) / 0.36);
     background:
-      linear-gradient(170deg, hsl(var(--card)) 0%, hsl(var(--background)) 100%),
-      radial-gradient(120% 100% at 0% 0%, hsl(var(--accent) / 0.08) 0%, transparent 58%);
-    box-shadow: 0 18px 40px -30px hsl(var(--primary) / 0.45);
+      linear-gradient(180deg, hsl(var(--glass-highlight) / 0.56) 0%, hsl(var(--glass-bg) / 0.34) 100%);
+    box-shadow:
+      0 18px 46px -34px hsl(220 48% 20% / 0.36),
+      0 8px 24px -20px hsl(var(--accent-soft-glow) / 0.26);
+    backdrop-filter: blur(12px);
+  }
+
+  .glass-panel-strong {
+    border: 1px solid hsl(var(--glass-border) / 0.44);
+    background:
+      radial-gradient(120% 95% at 100% 0%, hsl(var(--accent-soft-glow) / 0.16) 0%, transparent 62%),
+      linear-gradient(180deg, hsl(var(--glass-highlight) / 0.72) 0%, hsl(var(--glass-bg) / 0.4) 100%);
+    box-shadow:
+      0 26px 58px -38px hsl(220 48% 20% / 0.44),
+      0 14px 36px -24px hsl(var(--accent-hard-glow) / 0.34);
+    backdrop-filter: blur(14px);
+  }
+
+  .glass-divider {
+    border-top: 1px solid hsl(var(--glass-border) / 0.28);
+  }
+
+  .glass-chip {
+    border: 1px solid hsl(var(--glass-border) / 0.32);
+    background: hsl(var(--glass-bg) / 0.5);
+    backdrop-filter: blur(8px);
+  }
+
+  .accent-halo {
+    box-shadow:
+      0 20px 42px -30px hsl(var(--accent-hard-glow) / 0.54),
+      0 10px 24px -18px hsl(var(--accent-soft-glow) / 0.4);
+  }
+
+  .reveal-fade-up {
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 260ms ease, transform 260ms ease;
+    will-change: transform, opacity;
+  }
+
+  .reveal-fade-up.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .reveal-delay-1 {
+    transition-delay: 70ms;
+  }
+
+  .reveal-delay-2 {
+    transition-delay: 140ms;
+  }
+
+  .reveal-delay-3 {
+    transition-delay: 210ms;
   }
 
   .data-grid {
@@ -134,22 +237,15 @@
     opacity: 0.3;
   }
 
-  .signal-strip {
-    background:
-      radial-gradient(120% 90% at 10% 0%, hsl(var(--accent) / 0.08) 0%, transparent 58%),
-      linear-gradient(180deg, hsl(var(--card)) 0%, hsl(var(--background)) 100%);
-    box-shadow: 0 16px 38px -28px hsl(var(--primary) / 0.35);
-  }
-
   .evidence-card {
     border: 1px solid hsl(var(--border) / 0.85);
     background: hsl(var(--card) / 0.9);
-    transition: border-color 220ms ease, transform 220ms ease, box-shadow 220ms ease;
+    transition: border-color 200ms ease, transform 200ms ease, box-shadow 200ms ease;
   }
 
   .evidence-card:hover {
     border-color: hsl(var(--accent) / 0.45);
-    transform: translateY(-1px);
+    transform: translateY(-2px);
     box-shadow: 0 14px 28px -24px hsl(var(--primary) / 0.35);
   }
 
@@ -163,22 +259,33 @@
 
   .cta-surface {
     background:
-      linear-gradient(180deg, hsl(var(--card)) 0%, hsl(var(--background)) 100%),
-      radial-gradient(80% 120% at 50% -10%, hsl(var(--accent) / 0.12) 0%, transparent 62%);
+      linear-gradient(180deg, hsl(var(--glass-highlight) / 0.72) 0%, hsl(var(--background)) 100%),
+      radial-gradient(100% 130% at 50% -12%, hsl(var(--accent-soft-glow) / 0.14) 0%, transparent 64%);
   }
 
   .cta-glow {
-    box-shadow: 0 12px 34px -16px hsl(var(--accent) / 0.85);
+    box-shadow:
+      0 14px 36px -18px hsl(var(--accent-hard-glow) / 0.56),
+      0 8px 24px -20px hsl(var(--accent-soft-glow) / 0.45);
+  }
+
+  .cta-glow-soft {
+    box-shadow:
+      0 10px 28px -18px hsl(var(--accent-hard-glow) / 0.42),
+      0 6px 18px -16px hsl(var(--accent-soft-glow) / 0.32);
   }
 
   .sticky-cta {
-    box-shadow: 0 -10px 28px -18px hsl(var(--primary) / 0.5);
+    box-shadow:
+      0 -12px 30px -20px hsl(220 48% 20% / 0.35),
+      0 -8px 20px -18px hsl(var(--accent-soft-glow) / 0.3);
   }
 
+  /* Deprecated for landing runtime (Phase 1 migration target): prefer .glass-panel */
   .surface-soft {
     background:
-      radial-gradient(120% 80% at 20% 0%, hsl(var(--accent) / 0.08) 0%, transparent 55%),
-      radial-gradient(110% 70% at 85% 100%, hsl(var(--primary) / 0.08) 0%, transparent 60%),
+      radial-gradient(120% 80% at 20% 0%, hsl(var(--accent-soft-glow) / 0.12) 0%, transparent 56%),
+      radial-gradient(110% 70% at 85% 100%, hsl(var(--accent-hard-glow) / 0.1) 0%, transparent 62%),
       hsl(var(--card));
   }
 
@@ -215,32 +322,28 @@
 
   .cta-mesh {
     background:
-      radial-gradient(120% 90% at 0% 0%, hsl(var(--accent) / 0.14) 0%, transparent 60%),
-      radial-gradient(90% 80% at 100% 100%, hsl(var(--primary) / 0.14) 0%, transparent 58%);
+      radial-gradient(120% 90% at 0% 0%, hsl(var(--accent-soft-glow) / 0.18) 0%, transparent 60%),
+      radial-gradient(90% 80% at 100% 100%, hsl(var(--accent-hard-glow) / 0.12) 0%, transparent 58%);
   }
 
   .footer-sheen {
     background:
-      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--card) / 0.9) 100%),
-      radial-gradient(80% 120% at 50% 0%, hsl(var(--accent) / 0.05) 0%, transparent 60%);
+      radial-gradient(90% 140% at 0% 0%, hsl(var(--accent-soft-glow) / 0.16) 0%, transparent 62%),
+      radial-gradient(90% 140% at 100% 0%, hsl(var(--accent-hard-glow) / 0.14) 0%, transparent 64%),
+      linear-gradient(
+        180deg,
+        hsl(var(--landing-bg-bottom) / 0.55) 0%,
+        hsl(var(--card) / 0.95) 40%,
+        hsl(var(--card) / 0.98) 100%
+      );
+    box-shadow: inset 0 1px 0 hsl(var(--glass-border) / 0.36);
   }
 
-  .reveal-scroll {
-    opacity: 0;
-    transform: translateY(12px);
-    transition: opacity 420ms ease, transform 420ms ease;
-    will-change: transform, opacity;
-  }
-
-  .reveal-scroll.is-visible {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reveal-scroll,
-  .reveal-scroll.is-visible {
+  .reveal-fade-up,
+  .reveal-fade-up.is-visible {
     transition: none;
     opacity: 1;
     transform: none;

@@ -11,6 +11,7 @@ export interface LandingStepItem {
   step: string;
   title: string;
   oneLiner: string;
+  output: string;
 }
 
 export interface LandingProofItem {
@@ -32,11 +33,11 @@ export const landingCopy = {
   heroPrimaryCta: "Try in Dashboard",
   heroSecondaryCta: "See How It Works",
   heroTrustLine: "No setup call. Upload CSV, map fields, and start scoring in minutes.",
-  evidenceDescription: "What you can do today, at a glance.",
+  evidenceDescription: "What your team can do in the next 10 minutes.",
   workflowTitle: "How It Works",
-  workflowDescription: "Three steps, one repeatable rhythm.",
+  workflowDescription: "Three steps your team can scan in seconds.",
   proofTitle: "Trust Snapshot",
-  proofDescription: "Live capabilities and current limits in one view.",
+  proofDescription: "Live now, limits, and critical FAQs in one block.",
   faqTitle: "Quick FAQ",
   finalCtaTitle: "See your own leads in a prioritized queue",
   finalCtaBody: "Use your CSV, review explainable scores, and decide your first outreach moves in one workspace.",
@@ -45,27 +46,27 @@ export const landingCopy = {
 
 export const evidenceItems: LandingEvidenceItem[] = [
   {
-    title: "Field Mapping",
-    value: "Required-Field Guardrails",
-    micro: "Map required fields before scoring starts.",
+    title: "Upload CSV",
+    value: "Queue Ready In Minutes",
+    micro: "Map fields once and start scoring.",
     icon: FileSpreadsheet,
   },
   {
-    title: "Score Explainability",
-    value: "Reason Codes Per Lead",
-    micro: "See why each lead is ranked.",
+    title: "See Score Reasons",
+    value: "Defend Every Priority",
+    micro: "Grouped signals explain each score.",
     icon: BarChart3,
   },
   {
-    title: "Action Readiness",
-    value: "Queue To Outreach",
-    micro: "Move from queue to contact quickly.",
+    title: "Run Triage Fast",
+    value: "Contact The Right Leads First",
+    micro: "Use presets, shortcuts, and quick actions.",
     icon: Target,
   },
   {
-    title: "Execution Visibility",
-    value: "Session Analytics",
-    micro: "Track distribution and top signals.",
+    title: "Replay Demo Flow",
+    value: "Reset And Rerun Anytime",
+    micro: "Use scenarios, guided tour, and one-click reset.",
     icon: Activity,
   },
 ];
@@ -73,52 +74,55 @@ export const evidenceItems: LandingEvidenceItem[] = [
 export const workflowItems: LandingStepItem[] = [
   {
     step: "01",
-    title: "Upload And Map",
+    title: "Upload",
     oneLiner: "Import CSV and map required fields.",
+    output: "Queue ready",
   },
   {
     step: "02",
-    title: "Score And Explain",
+    title: "Score",
     oneLiner: "Get ranked leads with reason codes.",
+    output: "Hot/Warm/Cold + reasons",
   },
   {
     step: "03",
-    title: "Act And Track",
-    oneLiner: "Run outreach and review quality signals.",
+    title: "Act",
+    oneLiner: "Prioritize, triage, and review narrative analytics.",
+    output: "Contacted/Snoozed/Pinned",
   },
 ];
 
 export const liveTodayProof: LandingProofItem[] = [
   {
-    title: "CSV-first import flow",
-    detail: "Upload, parse, map required fields, and validate rows before import.",
+    title: "Import CSV and get a ranked queue in minutes",
+    detail: "Upload, map required fields, and move directly into prioritized work mode.",
   },
   {
-    title: "Deterministic score tiers",
-    detail: "Hot/warm/cold routing with explicit thresholds and score breakdown visibility.",
+    title: "Understand every score with grouped reasons and confidence",
+    detail: "See deterministic hot/warm/cold logic with transparent contribution groups.",
   },
   {
-    title: "Downloadable issue report",
-    detail: "Invalid rows can be reviewed in a generated CSV issue file.",
+    title: "Run triage fast with presets, shortcuts, and quick actions",
+    detail: "Use contacted/snoozed/pinned states and keyboard flow to move faster.",
   },
   {
-    title: "Session-based analytics",
-    detail: "Distribution, top reasons, and signal summaries are visible in prototype mode.",
+    title: "Review analytics narrative and settings impact before changes",
+    detail: "Track what changed and preview scoring impact before saving.",
   },
 ];
 
 export const roadmapProof: LandingProofItem[] = [
   {
-    title: "Backend persistence",
-    detail: "Current mode is session/local. Durable storage is not yet active in this phase.",
+    title: "No backend persistence yet (session/local only)",
+    detail: "Data is kept in frontend prototype storage for the current phase.",
   },
   {
-    title: "Native CRM integrations",
-    detail: "Product currently starts from CSV; direct CRM sync is a planned extension.",
+    title: "No native CRM sync yet (CSV-first)",
+    detail: "Import starts from CSV mapping; direct integrations are not active yet.",
   },
   {
-    title: "Automated outreach orchestration",
-    detail: "Current flow helps prioritization and manual action, not full outbound automation.",
+    title: "No automated outreach orchestration yet",
+    detail: "Current product supports prioritization and manual execution, not full automation.",
   },
 ];
 
