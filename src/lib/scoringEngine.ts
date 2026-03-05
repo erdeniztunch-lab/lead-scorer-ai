@@ -18,6 +18,7 @@ export interface ScoreContribution {
   key: string;
   label: string;
   value: number;
+  group?: "engagement" | "fit" | "recency" | "source";
 }
 
 export interface ScoringConfig {
@@ -353,34 +354,53 @@ export function scoreLead(input: SignalInput, config: ScoringConfig): ScoreResul
   const contributions: ScoreContribution[] = [];
 
   const emailOpens = Math.min((input.emailOpens ?? 0) * 2, config.weights.engagement.emailOpensCap);
-  contributions.push({ key: "email_opens", label: labelForSignal("email_opens", "Email opens"), value: emailOpens });
+  contributions.push({
+    key: "email_opens",
+    label: labelForSignal("email_opens", "Email opens"),
+    value: emailOpens,
+    group: "engagement",
+  });
 
   const emailClicks = Math.min((input.emailClicks ?? 0) * 4, config.weights.engagement.emailClicksCap);
-  contributions.push({ key: "email_clicks", label: labelForSignal("email_clicks", "Email clicks"), value: emailClicks });
+  contributions.push({
+    key: "email_clicks",
+    label: labelForSignal("email_clicks", "Email clicks"),
+    value: emailClicks,
+    group: "engagement",
+  });
 
   const pageViews = Math.min(input.pageViews ?? 0, config.weights.engagement.pageViewsCap);
-  contributions.push({ key: "page_views", label: labelForSignal("page_views", "High page views"), value: pageViews });
+  contributions.push({
+    key: "page_views",
+    label: labelForSignal("page_views", "High page views"),
+    value: pageViews,
+    group: "engagement",
+  });
 
   contributions.push({
     key: "demo_requested",
     label: labelForSignal("demo_requested", "Demo requested"),
     value: input.demoRequested ? config.weights.engagement.demoRequestedBonus : 0,
+    group: "engagement",
   });
 
   contributions.push({
     key: "industry_match",
     label: labelForSignal("industry_match", "Industry match"),
     value: input.industryMatch ? config.weights.fit.industryMatch : 0,
+    group: "fit",
   });
   contributions.push({
     key: "company_size_fit",
     label: labelForSignal("company_size_fit", "Company size fit"),
     value: input.companySizeFit ? config.weights.fit.companySizeFit : 0,
+    group: "fit",
   });
   contributions.push({
     key: "budget_fit",
     label: labelForSignal("budget_fit", "Budget fit"),
     value: input.budgetFit ? config.weights.fit.budgetFit : 0,
+    group: "fit",
   });
 
   const days = parseLastActivityDays(input.lastActivity);
@@ -392,11 +412,21 @@ export function scoreLead(input: SignalInput, config: ScoringConfig): ScoreResul
   } else if (days <= 7) {
     recencyScore = config.weights.recency.within7Days;
   }
-  contributions.push({ key: "recency", label: labelForSignal("recency", "Recent activity"), value: recencyScore });
+  contributions.push({
+    key: "recency",
+    label: labelForSignal("recency", "Recent activity"),
+    value: recencyScore,
+    group: "recency",
+  });
 
   const sourceKey = input.source.trim().toLowerCase();
   const sourceValue = config.weights.sourcePrior[sourceKey] ?? 0;
-  contributions.push({ key: "source_prior", label: labelForSignal("source_prior", "Source quality"), value: sourceValue });
+  contributions.push({
+    key: "source_prior",
+    label: labelForSignal("source_prior", "Source quality"),
+    value: sourceValue,
+    group: "source",
+  });
 
   const rawScore = contributions.reduce((sum, part) => sum + part.value, 0);
   const score = Math.max(0, Math.min(100, Math.round(rawScore)));

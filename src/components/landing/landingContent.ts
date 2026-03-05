@@ -1,4 +1,4 @@
-import { type LucideIcon, Activity, BarChart3, Clock3, FileSpreadsheet, ListChecks, Target } from "lucide-react";
+import { type LucideIcon, Activity, BarChart3, Clock3, FileSpreadsheet, Target } from "lucide-react";
 
 export interface LandingEvidenceItem {
   title: string;
@@ -32,14 +32,12 @@ export const landingCopy = {
   heroPrimaryCta: "Try in Dashboard",
   heroSecondaryCta: "See How It Works",
   heroTrustLine: "No setup call. Upload CSV, map fields, and start scoring in minutes.",
-  evidenceTitle: "Product Evidence",
   evidenceDescription: "What you can do today, at a glance.",
   workflowTitle: "How It Works",
   workflowDescription: "Three steps, one repeatable rhythm.",
   proofTitle: "Trust Snapshot",
   proofDescription: "Live capabilities and current limits in one view.",
   faqTitle: "Quick FAQ",
-  faqDescription: "Only what you need before trying.",
   finalCtaTitle: "See your own leads in a prioritized queue",
   finalCtaBody: "Use your CSV, review explainable scores, and decide your first outreach moves in one workspace.",
   finalCtaButton: "Try in Dashboard",

@@ -70,4 +70,30 @@ describe("scoringEngine", () => {
     expect(maxed.score).toBeLessThanOrEqual(100);
     expect(maxed.score).toBeGreaterThanOrEqual(0);
   });
+
+  it("assigns contribution groups for explainability", () => {
+    const result = scoreLead(
+      {
+        name: "A",
+        company: "B",
+        source: "Referral",
+        lastActivity: "1 day ago",
+        emailOpens: 2,
+        emailClicks: 1,
+        pageViews: 3,
+        demoRequested: true,
+        industryMatch: true,
+        companySizeFit: true,
+        budgetFit: true,
+      },
+      DEFAULT_SCORING_CONFIG,
+    );
+
+    const groups = new Set(result.contributions.map((item) => item.group));
+    expect(groups.has("engagement")).toBe(true);
+    expect(groups.has("fit")).toBe(true);
+    expect(groups.has("recency")).toBe(true);
+    expect(groups.has("source")).toBe(true);
+    expect(result.contributions.every((item) => item.group)).toBe(true);
+  });
 });

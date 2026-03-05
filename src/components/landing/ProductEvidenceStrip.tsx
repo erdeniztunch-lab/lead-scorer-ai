@@ -20,9 +20,7 @@ export function ProductEvidenceStrip() {
           ))}
         </div>
 
-        <p className="mt-4 text-center text-xs text-muted-foreground">
-          Live in prototype mode · no backend persistence yet
-        </p>
+        <p className="mt-4 text-center text-xs text-muted-foreground">Live in prototype mode - no backend persistence yet</p>
       </div>
     </section>
   );
