@@ -1023,25 +1023,17 @@ const Dashboard = () => {
                                 <p className="font-medium">{lead.name}</p>
                                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                                   <p className="text-xs text-muted-foreground">{lead.email}</p>
-                                  <span className={cn("rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", confidenceTone(lead.scoreConfidence))}>
-                                    {confidenceLabel(lead.scoreConfidence)}
-                                  </span>
-                                  {lead.enrichmentMeta?.applied && (
-                                    <span className="rounded-md border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
-                                      Enriched +{lead.enrichmentMeta.changeCount}
-                                    </span>
-                                  )}
                                   <span className={cn("rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", statusTone(effectiveStatus))}>
                                     {statusLabel(effectiveStatus)}
                                   </span>
-                                  {uiState?.pinned && (
-                                    <span className="rounded-md border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
-                                      Pinned
-                                    </span>
-                                  )}
                                   <span className={cn("rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", slaTone(slaState))}>
                                     {slaLabel(slaState)}
                                   </span>
+                                  <p className="text-[11px] text-muted-foreground">
+                                    Conf {confidenceLabel(lead.scoreConfidence)}
+                                    {lead.enrichmentMeta?.applied ? ` · Enriched +${lead.enrichmentMeta.changeCount}` : ""}
+                                    {uiState?.pinned ? " · Pinned" : ""}
+                                  </p>
                                 </div>
                               </TableCell>
                               <TableCell>

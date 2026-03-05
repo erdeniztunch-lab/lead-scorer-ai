@@ -778,3 +778,83 @@ Teknik olmayan birinin bile anlayabilecegi dilde yazilir.
 
 ### Vizyon etkisi
 - Landing kapanisinda gorsel kalite devam ediyor; footer artik bos beyaz bir alan degil, tasarim sisteminin bir parcasi gibi davranıyor.
+
+---
+
+## 2026-03-05 - Leads UX Simplification Master Plan Created
+
+### Neyi degistirdik?
+- `docs/leads-ux-simplification.md` adinda yeni phase-based UX plan dokumani olusturduk.
+- Plani 7 faza bolduk (Phase 0-6) ve her faz icin sabit kart yapisi ekledik:
+  - Goal
+  - Files
+  - Tasks
+  - Definition of Done
+  - Status metadata
+- Validation matrix, acceptance criteria ve assumptions bolumleri eklendi.
+
+### Neden degistirdik?
+- Dashboard Leads ekranini rastgele degil, adim adim ve olculebilir sekilde sadeleştirmek icin.
+- "Bugun once kimi aramaliyim?" kararini hizlandiracak UX iyilestirmelerini net bir execution planina baglamak icin.
+
+### Bu degisiklik nasil calisiyor?
+- Yeni dokuman Leads UX iyilestirmelerinin tek source-of-truth'u olarak calisir.
+- Fazlar sirali ilerler, her faz sonunda status/validation guncellenir.
+- Kodlama adimlarinda scope kaymasi engellenir (backend/scoring disi net sinirlar korunur).
+
+### Vizyon etkisi
+- Leads modulundeki UX iyilestirme sureci artik planli, izlenebilir ve ekip icin uygulanabilir bir urun-gelistirme akisina donustu.
+
+---
+
+## 2026-03-05 - Leads UX Simplification Phase 0 Completed (Baseline Audit Lock)
+
+### Neyi degistirdik?
+- `docs/leads-ux-simplification.md` icinde Phase 0 bolumunu gercek kod envanteriyle doldurduk.
+- Baseline snapshot eklendi:
+  - tablo kolonlari
+  - row badge/action yogunlugu
+  - filter panel yapisi
+  - expanded panel icerik sirasi
+  - keyboard shortcut ve workflow helper dogrulamalari
+- Scope lock netlestirildi (no scoring/backend/route change).
+- Phase 0 status'u `Completed` yapildi.
+
+### Neden degistirdik?
+- UX sadeleştirme fazlarina rastgele degil, olculebilir bir baseline ile baslamak icin.
+- Sonraki fazlarda neyin degisecegi / neyin degismeyecegi net olsun diye.
+
+### Bu degisiklik nasil calisiyor?
+- Dokuman artik Leads Work Mode icin source-of-truth baseline kaydi tutuyor.
+- Phase 1 ve sonrasi bu baseline uzerinden ilerleyecek ve farklar net olculebilecek.
+
+### Vizyon etkisi
+- Leads UX iyilestirme sureci artik "goz karari" degil, net baseline + phase execution modeliyle ilerliyor.
+
+---
+
+## 2026-03-05 - Leads UX Simplification Phase 1 Completed (Queue Row Density Reduction)
+
+### Neyi degistirdik?
+- Work Mode queue satirindaki badge yogunlugunu azalttik.
+- Row'da gorunen ana sinyalleri su cekirdege indirdik:
+  - workflow status badge
+  - SLA badge
+  - tier (mevcut tier kolonu uzerinden)
+- Confidence, enrichment ve pinned bilgisini badge yerine tek muted mikro satira tasidik.
+
+### Neden degistirdik?
+- Satiri 1-2 saniyede taranabilir yapmak icin.
+- Kullanicinin gozunu "karar sinyallerine" toplamak icin.
+- Detay bilgiyi gizlemeden, gorunur yogunlugu azaltmak icin.
+
+### Bu degisiklik nasil calisiyor?
+- `Dashboard.tsx` icinde lead row badge grubundan confidence/enrichment/pinned rozetleri kaldirildi.
+- Bu bilgiler satirda dusuk vurguya sahip tek metin satiri olarak kaldi:
+  - `Conf HIGH`
+  - `Enriched +N` (varsa)
+  - `Pinned` (varsa)
+- Expanded detail panelde confidence/enrichment detaylari aynen korunuyor.
+
+### Vizyon etkisi
+- Leads tablosu daha hafif ve hizli okunur hale geldi; karar odagi daha netlesti.
