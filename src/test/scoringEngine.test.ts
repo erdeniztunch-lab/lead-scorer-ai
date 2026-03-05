@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SCORING_CONFIG, deriveTier, scoreLead } from "@/lib/scoringEngine";
+import { DEFAULT_SCORING_CONFIG, buildTopReasons, deriveScoreConfidence, deriveTier, scoreLead } from "@/lib/scoringEngine";
 
 describe("scoringEngine", () => {
   it("derives tier by thresholds", () => {
@@ -50,6 +50,15 @@ describe("scoringEngine", () => {
     expect(result.topReasons.some((reason) => reason.includes("Clicked outreach links"))).toBe(true);
   });
 
+  it("uses alphabetical tie-break for equal contributions", () => {
+    const top = buildTopReasons([
+      { key: "z", label: "Zeta signal", value: 10 },
+      { key: "a", label: "Alpha signal", value: 10 },
+      { key: "m", label: "Mid signal", value: 8 },
+    ]);
+    expect(top).toEqual(["Alpha signal", "Zeta signal"]);
+  });
+
   it("clamps score into 0..100", () => {
     const maxed = scoreLead(
       {
@@ -95,5 +104,69 @@ describe("scoringEngine", () => {
     expect(groups.has("recency")).toBe(true);
     expect(groups.has("source")).toBe(true);
     expect(result.contributions.every((item) => item.group)).toBe(true);
+  });
+
+  it("derives high confidence with rich signals", () => {
+    const confidence = deriveScoreConfidence({
+      name: "A",
+      company: "B",
+      source: "Referral",
+      lastActivity: "1 day ago",
+      emailOpens: 3,
+      emailClicks: 2,
+      pageViews: 7,
+      demoRequested: true,
+      industryMatch: true,
+      companySizeFit: true,
+      budgetFit: true,
+    });
+    expect(confidence).toBe("high");
+  });
+
+  it("derives low confidence with sparse partial signals", () => {
+    const confidence = deriveScoreConfidence({
+      name: "A",
+      company: "B",
+      source: "Website",
+      lastActivity: "3 days ago",
+      emailOpens: 1,
+    });
+    expect(confidence).toBe("low");
+  });
+
+  it("derives low confidence with minimal signals", () => {
+    const confidence = deriveScoreConfidence({
+      name: "A",
+      company: "B",
+      source: "",
+      lastActivity: "",
+    });
+    expect(confidence).toBe("low");
+  });
+
+  it("keeps confidence low when booleans are explicitly false", () => {
+    const confidence = deriveScoreConfidence({
+      name: "A",
+      company: "B",
+      source: "",
+      lastActivity: "",
+      demoRequested: false,
+      industryMatch: false,
+      companySizeFit: false,
+      budgetFit: false,
+    });
+    expect(confidence).toBe("low");
+  });
+
+  it("upgrades confidence with strong positive signals", () => {
+    const confidence = deriveScoreConfidence({
+      name: "A",
+      company: "B",
+      source: "Referral",
+      lastActivity: "1 day ago",
+      emailClicks: 1,
+      demoRequested: true,
+    });
+    expect(confidence).toBe("medium");
   });
 });

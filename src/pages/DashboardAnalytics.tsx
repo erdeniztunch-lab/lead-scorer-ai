@@ -1,116 +1,55 @@
 import { useEffect, useState } from "react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { mockLeads } from "@/data/mockLeads";
-import { DEFAULT_SCORING_CONFIG, scoreLeads } from "@/lib/scoringEngine";
-
-interface AnalyticsSummary {
-  scoreDistribution: Record<string, number>;
-  topReasons: Array<{ reason: string; count: number }>;
-  topSignals: Array<{ key: string; label: string; count: number; avgContribution: number }>;
-  tierTrend: Array<{ runId: string; startedAt: string; avgScore: number; leadCount: number; hot: number; warm: number; cold: number }>;
-  configImpact: {
-    fromRunId: string | null;
-    toRunId: string | null;
-    avgScoreDelta: number;
-    hotDelta: number;
-    warmDelta: number;
-    coldDelta: number;
-    leadCountDelta: number;
-  } | null;
-  lastScoringRun: {
-    trigger_type: string;
-    config_version: string;
-    started_at: string;
-  } | null;
-}
+import { buildAnalyticsSummary, type AnalyticsNarrativeSummary } from "@/lib/analyticsNarrative";
+import { loadLeadsFromStorage } from "@/lib/leadStore";
+import { loadLeadUiState } from "@/lib/leadUiStateStore";
+import { trackPrototypeEvent } from "@/lib/prototypeTelemetry";
+import { loadScoringRuns, type ScoringRunSummary } from "@/lib/scoringStore";
 
 const DashboardAnalytics = () => {
-  const [summary, setSummary] = useState<AnalyticsSummary>({
-    scoreDistribution: { "0-39": 0, "40-59": 0, "60-79": 0, "80-100": 0 },
-    topReasons: [],
-    topSignals: [],
-    tierTrend: [],
-    configImpact: null,
-    lastScoringRun: null,
+  const [summary, setSummary] = useState<AnalyticsNarrativeSummary>({
+    narrativeLine: "Loading analytics...",
+    comparison: null,
+    sourceSegments: [],
+    tierSegments: [],
+    funnel: { imported: 0, scored: 0, prioritized: 0, contacted: 0 },
+    insights: [],
+    trend: [],
+    lastRun: null,
   });
 
   useEffect(() => {
     const load = () => {
-      const leads = scoreLeads(mockLeads, DEFAULT_SCORING_CONFIG);
-      const distribution = leads.reduce<Record<string, number>>(
-        (acc, lead) => {
-          if (lead.score >= 80) acc["80-100"] += 1;
-          else if (lead.score >= 60) acc["60-79"] += 1;
-          else if (lead.score >= 40) acc["40-59"] += 1;
-          else acc["0-39"] += 1;
-          return acc;
-        },
-        { "0-39": 0, "40-59": 0, "60-79": 0, "80-100": 0 },
-      );
-      const reasonCounts = new Map<string, number>();
-      leads.forEach((lead) => {
-        lead.reasons.forEach((reason) => {
-          reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
-        });
-      });
-      const topReasons = [...reasonCounts.entries()]
-        .map(([reason, count]) => ({ reason, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
-      const signalMap = new Map<string, { label: string; count: number; total: number }>();
-      leads.forEach((lead) => {
-        lead.scoreBreakdown.forEach((item) => {
-          const existing = signalMap.get(item.key) ?? { label: item.label, count: 0, total: 0 };
-          existing.count += 1;
-          existing.total += item.value;
-          signalMap.set(item.key, existing);
-        });
-      });
-      const topSignals = [...signalMap.entries()]
-        .map(([key, value]) => ({
-          key,
-          label: value.label,
-          count: value.count,
-          avgContribution: Number((value.total / Math.max(1, value.count)).toFixed(2)),
-        }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
-      const hot = leads.filter((lead) => lead.tier === "hot").length;
-      const warm = leads.filter((lead) => lead.tier === "warm").length;
-      const cold = leads.filter((lead) => lead.tier === "cold").length;
-      setSummary({
-        scoreDistribution: distribution,
-        topReasons,
-        topSignals,
-        tierTrend: [
-          {
-            runId: "prototype-session-run",
-            startedAt: new Date().toISOString(),
-            avgScore: Number((leads.reduce((sum, lead) => sum + lead.score, 0) / Math.max(1, leads.length)).toFixed(2)),
-            leadCount: leads.length,
-            hot,
-            warm,
-            cold,
-          },
-        ],
-        configImpact: {
-          fromRunId: null,
-          toRunId: "prototype-session-run",
-          avgScoreDelta: 0,
-          hotDelta: 0,
-          warmDelta: 0,
-          coldDelta: 0,
-          leadCountDelta: 0,
-        },
-        lastScoringRun: {
-          trigger_type: "prototype_session",
-          config_version: DEFAULT_SCORING_CONFIG.version,
-          started_at: new Date().toISOString(),
-        },
-      });
+      trackPrototypeEvent("analytics_viewed", { page: "dashboard_analytics" });
+      const leads = loadLeadsFromStorage();
+      const leadUiState = loadLeadUiState();
+      let runs = loadScoringRuns(7);
+
+      if (!runs.length) {
+        const syntheticRun: ScoringRunSummary = {
+          runId: "prototype-session-run",
+          timestamp: new Date().toISOString(),
+          leadCount: leads.length,
+          averageScore: Number((leads.reduce((sum, lead) => sum + lead.score, 0) / Math.max(1, leads.length)).toFixed(2)),
+          configVersion: leads[0]?.scoreVersion ?? "prototype",
+          trigger: "import",
+        };
+        runs = [syntheticRun];
+      }
+
+      setSummary(buildAnalyticsSummary(leads, runs, leadUiState));
     };
+
     load();
+    window.addEventListener("lead-scorer:leads-updated", load);
+    window.addEventListener("lead-scorer:scoring-runs-updated", load);
+    window.addEventListener("storage", load);
+    return () => {
+      window.removeEventListener("lead-scorer:leads-updated", load);
+      window.removeEventListener("lead-scorer:scoring-runs-updated", load);
+      window.removeEventListener("storage", load);
+    };
   }, []);
 
   return (
@@ -120,56 +59,81 @@ const DashboardAnalytics = () => {
           Prototype mode is active. Analytics is based on session/mock data and is not persisted.
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">What Changed and Why</CardTitle></CardHeader>
+        <CardContent className="text-sm text-muted-foreground">{summary.narrativeLine}</CardContent>
+      </Card>
+
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <Card>
-          <CardHeader><CardTitle className="text-base">Score Distribution</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">Before/After Comparison</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
-            {Object.entries(summary.scoreDistribution).map(([label, value]) => <p key={label}>{label}: <strong>{value}</strong></p>)}
+            {!summary.comparison && <p className="text-muted-foreground">Not enough runs to compare yet.</p>}
+            {summary.comparison && (
+              <>
+                <p>Avg score delta: <strong>{summary.comparison.avgScoreDelta}</strong></p>
+                <p>Lead count delta: <strong>{summary.comparison.leadCountDelta}</strong></p>
+                <p className="text-muted-foreground">Run: {summary.comparison.fromRunId} {"->"} {summary.comparison.toRunId}</p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle className="text-base">Top Reason Frequency</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">Quality Funnel</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
-            {summary.topReasons.length === 0 && <p className="text-muted-foreground">No reasons yet.</p>}
-            {summary.topReasons.map((item) => <p key={item.reason}>{item.reason}: <strong>{item.count}</strong></p>)}
+            <p>Imported: <strong>{summary.funnel.imported}</strong></p>
+            <p>Scored: <strong>{summary.funnel.scored}</strong></p>
+            <p>Prioritized (hot+warm): <strong>{summary.funnel.prioritized}</strong></p>
+            <p>Contacted: <strong>{summary.funnel.contacted}</strong></p>
           </CardContent>
         </Card>
       </div>
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <Card>
-          <CardHeader><CardTitle className="text-base">Top Signals</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">Source Segments</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
-            {summary.topSignals.length === 0 && <p className="text-muted-foreground">No signal data yet.</p>}
-            {summary.topSignals.map((item) => (
-              <p key={item.key}>
-                {item.label}: <strong>{item.count}</strong> (avg {item.avgContribution})
+            {summary.sourceSegments.length === 0 && <p className="text-muted-foreground">No segment data yet.</p>}
+            {summary.sourceSegments.map((item) => (
+              <p key={item.label}>
+                {item.label}: <strong>{item.leadCount}</strong> (avg {item.avgScore}, hot {item.hotRate}%)
               </p>
             ))}
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle className="text-base">Config Impact</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">Tier Segments</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
-            {!summary.configImpact && <p className="text-muted-foreground">Not enough scoring runs to compare yet.</p>}
-            {summary.configImpact && (
-              <>
-                <p>Avg score delta: <strong>{summary.configImpact.avgScoreDelta}</strong></p>
-                <p>Lead count delta: <strong>{summary.configImpact.leadCountDelta}</strong></p>
-                <p>Hot/Warm/Cold delta: <strong>{summary.configImpact.hotDelta}</strong> / <strong>{summary.configImpact.warmDelta}</strong> / <strong>{summary.configImpact.coldDelta}</strong></p>
-              </>
-            )}
+            {summary.tierSegments.map((item) => (
+              <p key={item.label}>
+                {item.label}: <strong>{item.leadCount}</strong> (avg {item.avgScore}, hot {item.hotRate}%)
+              </p>
+            ))}
           </CardContent>
         </Card>
       </div>
 
       <Card className="mt-4">
-        <CardHeader><CardTitle className="text-base">Tier Trend (Last 7 Runs)</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">Insight Callouts</CardTitle></CardHeader>
         <CardContent className="space-y-2 text-sm">
-          {summary.tierTrend.length === 0 && <p className="text-muted-foreground">No trend data yet.</p>}
-          {summary.tierTrend.map((point) => (
+          {summary.insights.map((insight) => (
+            <div key={insight.id} className="rounded border p-2">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">{insight.title}</p>
+              <p className="font-medium">{insight.value}</p>
+              <p className="text-muted-foreground">{insight.explanation}</p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card className="mt-4">
+        <CardHeader><CardTitle className="text-base">Trend (Last 7 Runs)</CardTitle></CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          {summary.trend.length === 0 && <p className="text-muted-foreground">No trend data yet.</p>}
+          {summary.trend.map((point) => (
             <p key={point.runId}>
-              {new Date(point.startedAt).toLocaleString()} {"->"} hot {point.hot}, warm {point.warm}, cold {point.cold}, avg {point.avgScore}
+              {new Date(point.startedAt).toLocaleString()} {"->"} avg {point.avgScore}, leads {point.leadCount}
             </p>
           ))}
         </CardContent>
@@ -178,8 +142,8 @@ const DashboardAnalytics = () => {
       <Card className="mt-4">
         <CardHeader><CardTitle className="text-base">Last Scoring Run</CardTitle></CardHeader>
         <CardContent className="text-sm text-muted-foreground">
-          {summary.lastScoringRun
-            ? `${new Date(summary.lastScoringRun.started_at).toLocaleString()} (${summary.lastScoringRun.trigger_type}, ${summary.lastScoringRun.config_version})`
+          {summary.lastRun
+            ? `${new Date(summary.lastRun.timestamp).toLocaleString()} (${summary.lastRun.trigger}, ${summary.lastRun.configVersion})`
             : "No scoring run found."}
         </CardContent>
       </Card>

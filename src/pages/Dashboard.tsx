@@ -1,6 +1,8 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock3, Download, Filter, Flame, Layers3, Linkedin, Mail, Phone, Search, Target, Upload, XCircle } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { DemoReadinessPanel } from "@/components/demo/DemoReadinessPanel";
+import { GuidedTourOverlay } from "@/components/demo/GuidedTourOverlay";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { mockLeads, type Lead } from "@/data/mockLeads";
 import { type ImportIssue, useLeadImport } from "@/hooks/useLeadImport";
+import { demoScenarios } from "@/lib/demoScenarios";
+import { loadDemoSessionState, markTourCompleted, resetScenarioState, type DemoScenarioId, type DemoSessionState } from "@/lib/demoStore";
+import { getSlaState, isSnoozed, parseLastActivityHours, sortLeadsByWorkflowPriority } from "@/lib/dashboardWorkflowHelpers";
+import { buildEnrichmentPreview, buildLeadEnrichmentMeta, type EnrichmentSuggestion } from "@/lib/enrichment";
+import { loadLeadsFromStorage, saveLeadsToStorage } from "@/lib/leadStore";
+import { loadLeadUiState, saveLeadUiState, type LeadStatus, type LeadUIStateMap } from "@/lib/leadUiStateStore";
+import { trackPrototypeEvent } from "@/lib/prototypeTelemetry";
 import { DEFAULT_SCORING_CONFIG, scoreLead, scoreLeads } from "@/lib/scoringEngine";
 import { isGuestSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
@@ -35,6 +44,7 @@ const leadFields = [
 type LeadFieldKey = (typeof leadFields)[number]["key"];
 type WorkMode = "work" | "setup";
 type QualityProfile = "all" | "high_intent" | "balanced_pipeline" | "volume_mode";
+type WorkflowPreset = "none" | "hot_today" | "no_recent_touch" | "high_intent_fit";
 type ContributionGroup = NonNullable<Lead["scoreBreakdown"][number]["group"]>;
 
 interface KpiState {
@@ -59,6 +69,13 @@ const qualityProfileMeta: Record<QualityProfile, string> = {
   high_intent: "Only HOT leads",
   balanced_pipeline: "HOT + WARM leads",
   volume_mode: "Score threshold: 40+",
+};
+
+const workflowPresetLabel: Record<WorkflowPreset, string> = {
+  none: "No preset",
+  hot_today: "Hot today",
+  no_recent_touch: "No recent touch",
+  high_intent_fit: "High intent + fit",
 };
 
 const contributionGroupOrder: ContributionGroup[] = ["engagement", "fit", "recency", "source"];
@@ -110,6 +127,42 @@ function tierTone(tier: Lead["tier"]) {
   return "border-slate-200 bg-slate-100 text-slate-700";
 }
 
+function confidenceTone(confidence: Lead["scoreConfidence"] | undefined) {
+  if (confidence === "high") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (confidence === "medium") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-slate-200 bg-slate-100 text-slate-700";
+}
+
+function confidenceLabel(confidence: Lead["scoreConfidence"] | undefined) {
+  return (confidence ?? "low").toUpperCase();
+}
+
+function statusTone(status: LeadStatus) {
+  if (status === "contacted") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "snoozed") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-slate-200 bg-slate-100 text-slate-700";
+}
+
+function statusLabel(status: LeadStatus) {
+  if (status === "contacted") return "Contacted";
+  if (status === "snoozed") return "Snoozed";
+  return "New";
+}
+
+function slaTone(state: ReturnType<typeof getSlaState>) {
+  if (state === "responded") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (state === "overdue") return "border-red-200 bg-red-50 text-red-700";
+  if (state === "due_soon") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-sky-200 bg-sky-50 text-sky-700";
+}
+
+function slaLabel(state: ReturnType<typeof getSlaState>) {
+  if (state === "responded") return "Responded";
+  if (state === "overdue") return "Overdue";
+  if (state === "due_soon") return "Due soon";
+  return "On track";
+}
+
 function downloadIssuesCsv(issues: ImportIssue[]) {
   const sanitizeCell = (value: string) => {
     const normalized = value.replace(/"/g, '""');
@@ -155,45 +208,98 @@ function buildGuestKpis(items: Lead[]): KpiState {
 const Dashboard = () => {
   const { toast } = useToast();
   const guestMode = isGuestSession();
+  const [demoSession, setDemoSession] = useState<DemoSessionState>(() => loadDemoSessionState());
   const [mode, setMode] = useState<WorkMode>("work");
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [guestLeads, setGuestLeads] = useState<Lead[]>(() => scoreLeads(mockLeads, DEFAULT_SCORING_CONFIG));
+  const [guestLeads, setGuestLeads] = useState<Lead[]>(() => scoreLeads(loadLeadsFromStorage() ?? mockLeads, DEFAULT_SCORING_CONFIG));
   const [kpis, setKpis] = useState<KpiState>({ totalLeads: 0, hotLeads: 0, warmLeads: 0, coldLeads: 0, avgScore: 0 });
   const isLoadingLeads = false;
   const isLoadingKpis = false;
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [focusedIndex, setFocusedIndex] = useState(0);
   const [search, setSearch] = useState("");
   const [tierFilter, setTierFilter] = useState("all");
   const [qualityProfile, setQualityProfile] = useState<QualityProfile>("all");
+  const [workflowPreset, setWorkflowPreset] = useState<WorkflowPreset>("none");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [leadUiState, setLeadUiState] = useState<LeadUIStateMap>(() => loadLeadUiState());
   const [preview, setPreview] = useState<ImportPreviewResponse | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
+  const [enrichmentSuggestions, setEnrichmentSuggestions] = useState<EnrichmentSuggestion[]>([]);
+  const [acceptedEnrichment, setAcceptedEnrichment] = useState<Record<string, string>>({});
+  const [tourOpen, setTourOpen] = useState(false);
+  const [tourStepIndex, setTourStepIndex] = useState(0);
+  const acceptedCount = Object.keys(acceptedEnrichment).length;
+  const pendingSuggestions = enrichmentSuggestions.filter((item) => acceptedEnrichment[item.id] === undefined);
+  const activeScenario = demoScenarios[(demoSession.activeScenarioId ?? "high_intent_inbound") as DemoScenarioId];
+
+  const confidenceToneBySuggestion: Record<EnrichmentSuggestion["confidence"], string> = {
+    high: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    medium: "border-amber-200 bg-amber-50 text-amber-700",
+    low: "border-slate-200 bg-slate-100 text-slate-700",
+  };
+  const suggestionById = useMemo(
+    () =>
+      Object.fromEntries(enrichmentSuggestions.map((suggestion) => [suggestion.id, suggestion])) as Record<
+        string,
+        EnrichmentSuggestion
+      >,
+    [enrichmentSuggestions],
+  );
+  const tourSteps = useMemo(
+    () => [
+      { id: "setup", title: "Setup", body: "Start with Setup Mode to review CSV mappings and preview enrichment before import." },
+      { id: "score", title: "Score", body: "Use explainable score details to understand why leads are HOT, WARM, or COLD." },
+      { id: "act", title: "Act", body: "Use quick actions and shortcuts to contact, snooze, or pin leads rapidly." },
+      { id: "analyze", title: "Analyze", body: "Open Analytics to explain what changed and why in this scenario." },
+    ],
+    [],
+  );
 
   const importer = useLeadImport<LeadFieldKey>({
     leadFields,
     buildLeadFromRow: (row, mapping, id) => {
-      const name = (row[mapping.name] ?? "").trim();
-      const company = (row[mapping.company] ?? "").trim();
-      const email = (row[mapping.email] ?? "").trim().toLowerCase();
-      const source = (row[mapping.source] ?? "Website").trim() || "Website";
-      const lastActivity = (row[mapping.lastActivity] ?? "7 days ago").trim() || "7 days ago";
+      const rowIndex = id - 1;
+      const resolveValue = (field: LeadFieldKey) => {
+        const suggestionKey = `${rowIndex}:${field}`;
+        if (acceptedEnrichment[suggestionKey] !== undefined) {
+          return acceptedEnrichment[suggestionKey];
+        }
+        const column = mapping[field];
+        return column ? (row[column] ?? "").trim() : "";
+      };
+
+      const name = resolveValue("name");
+      const company = resolveValue("company");
+      const email = resolveValue("email").toLowerCase();
+      const source = resolveValue("source") || "Website";
+      const lastActivity = resolveValue("lastActivity") || "7 days ago";
       const result = scoreLead(
         {
           name,
           company,
           source,
           lastActivity,
-          emailOpens: parseNumber(row[mapping.emailOpens]),
-          emailClicks: parseNumber(row[mapping.emailClicks]),
-          pageViews: parseNumber(row[mapping.pageViews]),
-          demoRequested: parseBoolean(row[mapping.demoRequested]),
-          industryMatch: parseBoolean(row[mapping.industryMatch]),
-          companySizeFit: parseBoolean(row[mapping.companySizeFit]),
-          budgetFit: parseBoolean(row[mapping.budgetFit]),
+          emailOpens: parseNumber(resolveValue("emailOpens")),
+          emailClicks: parseNumber(resolveValue("emailClicks")),
+          pageViews: parseNumber(resolveValue("pageViews")),
+          demoRequested: parseBoolean(resolveValue("demoRequested")),
+          industryMatch: parseBoolean(resolveValue("industryMatch")),
+          companySizeFit: parseBoolean(resolveValue("companySizeFit")),
+          budgetFit: parseBoolean(resolveValue("budgetFit")),
         },
         DEFAULT_SCORING_CONFIG,
       );
+      const enrichmentMeta = buildLeadEnrichmentMeta({
+        row,
+        mapping: mapping as Record<string, string>,
+        rowIndex,
+        acceptedById: acceptedEnrichment,
+        suggestionById,
+        trackedFields: leadFields.map((field) => field.key),
+      });
+
       return {
         id,
         rank: id,
@@ -202,6 +308,7 @@ const Dashboard = () => {
         email,
         source,
         score: result.score,
+        scoreConfidence: result.scoreConfidence,
         tier: result.tier,
         reasons: result.topReasons,
         lastActivity,
@@ -212,6 +319,7 @@ const Dashboard = () => {
           value: item.value,
           group: item.group,
         })),
+        enrichmentMeta,
         scoredAt: new Date().toISOString(),
         scoreVersion: DEFAULT_SCORING_CONFIG.version,
       };
@@ -230,6 +338,18 @@ const Dashboard = () => {
     return next;
   }, [guestLeads, qualityProfile]);
 
+  const applyWorkflowPreset = (preset: WorkflowPreset) => {
+    setWorkflowPreset(preset);
+    setPage(1);
+    trackPrototypeEvent("filter_used", { filter: "workflowPreset", value: preset });
+    if (preset === "hot_today") {
+      setTierFilter("hot");
+      setQualityProfile("all");
+    } else if (preset === "high_intent_fit") {
+      setQualityProfile("high_intent");
+    }
+  };
+
   const fetchLeads = () => {
     const filtered = filteredGuestLeads
       .filter((lead) => (tierFilter === "all" ? true : lead.tier === tierFilter))
@@ -242,7 +362,22 @@ const Dashboard = () => {
           lead.email.toLowerCase().includes(term)
         );
       })
-      .sort((a, b) => b.score - a.score)
+      .filter((lead) => {
+        const state = leadUiState[lead.id];
+        if (workflowPreset === "hot_today") {
+          return !isSnoozed(state);
+        }
+        if (workflowPreset === "no_recent_touch") {
+          if (state?.status === "contacted") return false;
+          const ageHours = parseLastActivityHours(lead.lastActivity);
+          return ageHours !== null && ageHours > 72;
+        }
+        if (workflowPreset === "high_intent_fit") {
+          return lead.scoreConfidence === "high" || lead.scoreConfidence === "medium";
+        }
+        return true;
+      })
+      .sort((a, b) => sortLeadsByWorkflowPriority(a, b, leadUiState[a.id], leadUiState[b.id]))
       .map((lead, index) => ({ ...lead, rank: index + 1 }));
 
     const pageSize = 25;
@@ -256,6 +391,7 @@ const Dashboard = () => {
     if (safePage !== page) {
       setPage(safePage);
     }
+    setFocusedIndex((current) => Math.min(current, Math.max(0, items.length - 1)));
   };
 
   const fetchKpis = () => {
@@ -264,13 +400,186 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchLeads();
-  }, [page, search, tierFilter, qualityProfile, guestLeads, filteredGuestLeads]);
+  }, [page, search, tierFilter, qualityProfile, workflowPreset, guestLeads, filteredGuestLeads, leadUiState]);
 
   useEffect(() => {
     fetchKpis();
   }, [guestLeads]);
 
+  useEffect(() => {
+    saveLeadUiState(leadUiState);
+  }, [leadUiState]);
+
+  useEffect(() => {
+    saveLeadsToStorage(guestLeads);
+  }, [guestLeads]);
+
+  useEffect(() => {
+    const syncDemo = () => setDemoSession(loadDemoSessionState());
+    const onResetScenario = (event: Event) => {
+      const custom = event as CustomEvent<{ scenarioId?: DemoScenarioId }>;
+      const scenarioId = custom.detail?.scenarioId ?? loadDemoSessionState().activeScenarioId ?? "high_intent_inbound";
+      const scenario = demoScenarios[scenarioId];
+      if (!scenario) return;
+
+      const seeded = scoreLeads(scenario.seedLeads, DEFAULT_SCORING_CONFIG);
+      setGuestLeads(seeded);
+      setLeadUiState({});
+      setMode("work");
+      setPage(1);
+      setSearch("");
+      setTierFilter("all");
+      setQualityProfile("all");
+      setWorkflowPreset("none");
+      setExpanded(null);
+      setAcceptedEnrichment({});
+      setEnrichmentSuggestions([]);
+      setPreview(null);
+      saveLeadsToStorage(seeded);
+      resetScenarioState(scenarioId);
+      trackPrototypeEvent("scenario_reset", { scenarioId });
+      setDemoSession(loadDemoSessionState());
+    };
+    const onStartTour = () => {
+      setTourStepIndex(0);
+      setTourOpen(true);
+      trackPrototypeEvent("tour_step_viewed", { scenarioId: demoSession.activeScenarioId ?? "high_intent_inbound", step: "setup", stepIndex: 0 });
+    };
+
+    window.addEventListener("lead-scorer:demo-session-updated", syncDemo);
+    window.addEventListener("lead-scorer:demo-reset-scenario", onResetScenario as EventListener);
+    window.addEventListener("lead-scorer:demo-start-tour", onStartTour);
+    return () => {
+      window.removeEventListener("lead-scorer:demo-session-updated", syncDemo);
+      window.removeEventListener("lead-scorer:demo-reset-scenario", onResetScenario as EventListener);
+      window.removeEventListener("lead-scorer:demo-start-tour", onStartTour);
+    };
+  }, [demoSession.activeScenarioId]);
+
+  useEffect(() => {
+    if (!demoSession.enabled) return;
+    const scenarioId = demoSession.activeScenarioId ?? "high_intent_inbound";
+    if (demoSession.tourCompletedByScenario[scenarioId]) return;
+    setTourStepIndex(0);
+    setTourOpen(true);
+    trackPrototypeEvent("tour_step_viewed", { scenarioId, step: "setup", stepIndex: 0 });
+  }, [demoSession.enabled, demoSession.activeScenarioId, demoSession.tourCompletedByScenario]);
+
+  useEffect(() => {
+    if (expanded === null) return;
+    trackPrototypeEvent("lead_expanded", { leadId: expanded });
+  }, [expanded]);
+
+  useEffect(() => {
+    if (!importer.csvRows.length) {
+      setEnrichmentSuggestions([]);
+      setAcceptedEnrichment({});
+      return;
+    }
+    const previewData = buildEnrichmentPreview(importer.csvRows, importer.mapping as Record<string, string>);
+    setEnrichmentSuggestions(previewData.suggestions);
+    setAcceptedEnrichment((prev) => {
+      const next: Record<string, string> = {};
+      previewData.suggestions.forEach((suggestion) => {
+        if (prev[suggestion.id] !== undefined) {
+          next[suggestion.id] = prev[suggestion.id];
+        }
+      });
+      return next;
+    });
+  }, [importer.csvRows, importer.mapping]);
+
+  useEffect(() => {
+    setPreview(null);
+    setAcceptedEnrichment({});
+  }, [importer.csvContent]);
+
+  const markLeadContacted = (leadId: number) => {
+    trackPrototypeEvent("action_clicked", { action: "contacted", leadId });
+    setLeadUiState((prev) => ({
+      ...prev,
+      [leadId]: {
+        ...(prev[leadId] ?? { leadId }),
+        leadId,
+        status: "contacted",
+        contactedAt: new Date().toISOString(),
+        snoozedUntil: undefined,
+      },
+    }));
+  };
+
+  const snoozeLead24h = (leadId: number) => {
+    trackPrototypeEvent("action_clicked", { action: "snooze_24h", leadId });
+    const snoozedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    setLeadUiState((prev) => ({
+      ...prev,
+      [leadId]: {
+        ...(prev[leadId] ?? { leadId }),
+        leadId,
+        status: "snoozed",
+        snoozedUntil,
+      },
+    }));
+  };
+
+  const toggleLeadPin = (leadId: number) => {
+    trackPrototypeEvent("action_clicked", { action: "pin_toggle", leadId });
+    setLeadUiState((prev) => {
+      const current = prev[leadId];
+      return {
+        ...prev,
+        [leadId]: {
+          ...(current ?? { leadId, status: "new" as const }),
+          leadId,
+          status: current?.status ?? "new",
+          pinned: !current?.pinned,
+        },
+      };
+    });
+  };
+
+  useEffect(() => {
+    if (mode !== "work") return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTypingTarget = Boolean(
+        target?.isContentEditable || tagName === "input" || tagName === "textarea" || tagName === "select",
+      );
+      if (isTypingTarget) return;
+      if (!leads.length) return;
+
+      const focusedLead = leads[Math.min(focusedIndex, leads.length - 1)];
+      if (!focusedLead) return;
+
+      if (event.key === "j") {
+        event.preventDefault();
+        setFocusedIndex((current) => Math.min(leads.length - 1, current + 1));
+      } else if (event.key === "k") {
+        event.preventDefault();
+        setFocusedIndex((current) => Math.max(0, current - 1));
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        setExpanded((current) => (current === focusedLead.id ? null : focusedLead.id));
+      } else if (event.key === "c") {
+        event.preventDefault();
+        markLeadContacted(focusedLead.id);
+      } else if (event.key === "s") {
+        event.preventDefault();
+        snoozeLead24h(focusedLead.id);
+      } else if (event.key === "p") {
+        event.preventDefault();
+        toggleLeadPin(focusedLead.id);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mode, leads, focusedIndex]);
+
   const handleImport = async () => {
+    trackPrototypeEvent("import_clicked", { mode });
     if (!importer.csvContent) {
       importer.setUploadError("Upload a CSV before importing.");
       return;
@@ -305,6 +614,8 @@ const Dashboard = () => {
     setMode("work");
     setPage(1);
     setPreview(null);
+    setEnrichmentSuggestions([]);
+    setAcceptedEnrichment({});
     fetchLeads();
     fetchKpis();
   };
@@ -437,6 +748,106 @@ const Dashboard = () => {
                       </CardContent>
                     </Card>
                   )}
+
+                  {enrichmentSuggestions.length > 0 && (
+                    <Card className="border-dashed">
+                      <CardContent className="space-y-3 p-3 text-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Step 1.5</p>
+                            <p className="text-sm font-medium">Enrichment Preview (Prototype)</p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline">{enrichmentSuggestions.length} suggestions</Badge>
+                            <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">{acceptedCount} accepted</Badge>
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Review mock field completions before import. Accepted suggestions are applied only in this session.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const allAccepted: Record<string, string> = {};
+                              enrichmentSuggestions.forEach((suggestion) => {
+                                allAccepted[suggestion.id] = suggestion.suggestedValue;
+                              });
+                              setAcceptedEnrichment(allAccepted);
+                            }}
+                          >
+                            Accept all
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setAcceptedEnrichment({})}>
+                            Reset
+                          </Button>
+                          <p className="self-center text-xs text-muted-foreground">
+                            Pending: {pendingSuggestions.length}
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          {enrichmentSuggestions.slice(0, 10).map((suggestion) => {
+                            const accepted = acceptedEnrichment[suggestion.id] !== undefined;
+                            return (
+                              <div key={suggestion.id} className="space-y-2 rounded-md border p-2">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <p className="text-xs text-muted-foreground">
+                                    Row {suggestion.rowNumber} · {suggestion.field}
+                                  </p>
+                                  <Badge variant="outline" className={cn("capitalize", confidenceToneBySuggestion[suggestion.confidence])}>
+                                    {suggestion.confidence}
+                                  </Badge>
+                                </div>
+                                <p className="text-sm">
+                                  <span className="text-muted-foreground">Current:</span>{" "}
+                                  <span className="font-medium">{suggestion.currentValue || "empty"}</span>
+                                  {"  "}
+                                  <span className="text-muted-foreground">{"->"} Suggested:</span>{" "}
+                                  <span className="font-semibold">{suggestion.suggestedValue}</span>
+                                </p>
+                                <p className="text-xs text-muted-foreground">{suggestion.reason}</p>
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant={accepted ? "secondary" : "outline"}
+                                    onClick={() =>
+                                      setAcceptedEnrichment((prev) => ({
+                                        ...prev,
+                                        [suggestion.id]: suggestion.suggestedValue,
+                                      }))
+                                    }
+                                  >
+                                    {accepted ? "Applied" : "Apply"}
+                                  </Button>
+                                  {accepted && (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() =>
+                                        setAcceptedEnrichment((prev) => {
+                                          const next = { ...prev };
+                                          delete next[suggestion.id];
+                                          return next;
+                                        })
+                                      }
+                                    >
+                                      Undo
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {enrichmentSuggestions.length > 10 && (
+                          <p className="text-xs text-muted-foreground">
+                            Showing first 10 suggestions for quick scan.
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
                 </>
               )}
             </CardContent>
@@ -445,6 +856,18 @@ const Dashboard = () => {
 
         {mode === "work" && (
           <>
+            {demoSession.enabled && activeScenario && (
+              <DemoReadinessPanel
+                scenario={activeScenario}
+                onReset={() =>
+                  window.dispatchEvent(
+                    new CustomEvent("lead-scorer:demo-reset-scenario", {
+                      detail: { scenarioId: demoSession.activeScenarioId ?? "high_intent_inbound" },
+                    }),
+                  )
+                }
+              />
+            )}
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
               <Card className="surface-soft">
                 <CardContent className="p-4">
@@ -482,7 +905,30 @@ const Dashboard = () => {
               <CardContent className="space-y-3 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="inline-flex items-center gap-2 text-sm font-medium"><Filter className="h-4 w-4" />Queue Filters</p>
-                  <p className="text-xs text-muted-foreground">{qualityProfileMeta[qualityProfile]}</p>
+                  <p className="text-xs text-muted-foreground">{qualityProfileMeta[qualityProfile]} · {workflowPresetLabel[workflowPreset]}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant={workflowPreset === "hot_today" ? "secondary" : "outline"}
+                    onClick={() => applyWorkflowPreset("hot_today")}
+                  >
+                    Hot today
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={workflowPreset === "no_recent_touch" ? "secondary" : "outline"}
+                    onClick={() => applyWorkflowPreset("no_recent_touch")}
+                  >
+                    No recent touch
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={workflowPreset === "high_intent_fit" ? "secondary" : "outline"}
+                    onClick={() => applyWorkflowPreset("high_intent_fit")}
+                  >
+                    High intent + fit
+                  </Button>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="relative">
@@ -497,7 +943,7 @@ const Dashboard = () => {
                       }}
                     />
                   </div>
-                  <Select value={tierFilter} onValueChange={(value) => { setPage(1); setTierFilter(value); }}>
+                  <Select value={tierFilter} onValueChange={(value) => { setPage(1); setTierFilter(value); trackPrototypeEvent("filter_used", { filter: "tier", value }); }}>
                     <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All tiers</SelectItem>
@@ -511,6 +957,7 @@ const Dashboard = () => {
                     onValueChange={(value) => {
                       setPage(1);
                       setQualityProfile(value as QualityProfile);
+                      trackPrototypeEvent("filter_used", { filter: "qualityProfile", value });
                     }}
                   >
                     <SelectTrigger className="w-56 max-w-[75vw]"><SelectValue /></SelectTrigger>
@@ -528,11 +975,14 @@ const Dashboard = () => {
                       setSearch("");
                       setTierFilter("all");
                       setQualityProfile("all");
+                      setWorkflowPreset("none");
+                      trackPrototypeEvent("filter_used", { filter: "reset", value: "all" });
                     }}
                   >
                     Reset
                   </Button>
                 </div>
+                <p className="text-[11px] text-muted-foreground">Shortcuts: j/k navigate, Enter expand, c contacted, s snooze, p pin.</p>
               </CardContent>
             </Card>
 
@@ -550,18 +1000,49 @@ const Dashboard = () => {
                 </TableHeader>
                 <TableBody>
                   {isLoadingLeads && <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">Loading leads...</TableCell></TableRow>}
-                  {!isLoadingLeads && leads.map((lead) => {
+                  {!isLoadingLeads && leads.map((lead, rowIndex) => {
                     const groupedBreakdown = groupScoreBreakdown(lead.scoreBreakdown);
+                    const uiState = leadUiState[lead.id];
+                    const isFocused = focusedIndex === rowIndex;
+                    const isLeadSnoozed = isSnoozed(uiState);
+                    const effectiveStatus: LeadStatus =
+                      uiState?.status === "contacted" ? "contacted" : isLeadSnoozed ? "snoozed" : "new";
+                    const slaState = getSlaState(lead, uiState);
 
                     return (
                       <Collapsible key={lead.id} open={expanded === lead.id} onOpenChange={(isOpen) => setExpanded(isOpen ? lead.id : null)} asChild>
                         <>
                           <CollapsibleTrigger asChild>
-                            <TableRow className="cursor-pointer hover:bg-muted/35" title="Expand lead details">
+                            <TableRow
+                              className={cn("cursor-pointer hover:bg-muted/35", isFocused && "bg-muted/45 outline outline-1 outline-primary")}
+                              title="Expand lead details"
+                              onMouseEnter={() => setFocusedIndex(rowIndex)}
+                            >
                               <TableCell className="text-muted-foreground">{lead.rank}</TableCell>
                               <TableCell>
                                 <p className="font-medium">{lead.name}</p>
-                                <p className="text-xs text-muted-foreground">{lead.email}</p>
+                                <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                                  <p className="text-xs text-muted-foreground">{lead.email}</p>
+                                  <span className={cn("rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", confidenceTone(lead.scoreConfidence))}>
+                                    {confidenceLabel(lead.scoreConfidence)}
+                                  </span>
+                                  {lead.enrichmentMeta?.applied && (
+                                    <span className="rounded-md border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
+                                      Enriched +{lead.enrichmentMeta.changeCount}
+                                    </span>
+                                  )}
+                                  <span className={cn("rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", statusTone(effectiveStatus))}>
+                                    {statusLabel(effectiveStatus)}
+                                  </span>
+                                  {uiState?.pinned && (
+                                    <span className="rounded-md border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+                                      Pinned
+                                    </span>
+                                  )}
+                                  <span className={cn("rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", slaTone(slaState))}>
+                                    {slaLabel(slaState)}
+                                  </span>
+                                </div>
                               </TableCell>
                               <TableCell>
                                 <p className="font-medium">{lead.company}</p>
@@ -579,10 +1060,19 @@ const Dashboard = () => {
                                 <Badge variant="outline" className={cn("capitalize", tierTone(lead.tier))}>{lead.tier}</Badge>
                               </TableCell>
                               <TableCell className="text-right">
-                                <div className="inline-flex gap-1">
-                                  <Button variant="ghost" size="icon" title="Email lead" aria-label={`Email ${lead.name}`}><Mail className="h-4 w-4" /></Button>
-                                  <Button variant="ghost" size="icon" title="Call lead" aria-label={`Call ${lead.name}`}><Phone className="h-4 w-4" /></Button>
-                                  <Button variant="ghost" size="icon" title="Open LinkedIn" aria-label={`Open LinkedIn for ${lead.name}`}><Linkedin className="h-4 w-4" /></Button>
+                                <div className="inline-flex flex-wrap justify-end gap-1">
+                                  <Button variant="ghost" size="icon" title="Email lead" aria-label={`Email ${lead.name}`} onClick={(event) => event.stopPropagation()}><Mail className="h-4 w-4" /></Button>
+                                  <Button variant="ghost" size="icon" title="Call lead" aria-label={`Call ${lead.name}`} onClick={(event) => event.stopPropagation()}><Phone className="h-4 w-4" /></Button>
+                                  <Button variant="ghost" size="icon" title="Open LinkedIn" aria-label={`Open LinkedIn for ${lead.name}`} onClick={(event) => event.stopPropagation()}><Linkedin className="h-4 w-4" /></Button>
+                                  <Button size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); markLeadContacted(lead.id); }}>
+                                    Contacted
+                                  </Button>
+                                  <Button size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); snoozeLead24h(lead.id); }}>
+                                    Snooze 24h
+                                  </Button>
+                                  <Button size="sm" variant={uiState?.pinned ? "secondary" : "outline"} onClick={(event) => { event.stopPropagation(); toggleLeadPin(lead.id); }}>
+                                    {uiState?.pinned ? "Unpin" : "Pin"}
+                                  </Button>
                                 </div>
                               </TableCell>
                             </TableRow>
@@ -591,11 +1081,51 @@ const Dashboard = () => {
                             <TableRow>
                               <TableCell colSpan={6} className="space-y-3 bg-muted/25">
                                 <div className="rounded-md border bg-background p-3">
-                                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Why this score</p>
-                                  <p className="mt-1 text-sm font-medium">{lead.topReasons?.length ? lead.topReasons.join(" · ") : lead.reasons.join(" · ")}</p>
-                                  <p className="mt-1 text-xs text-muted-foreground">Tier outcome: {lead.tier.toUpperCase()} · Last activity: {lead.lastActivity}</p>
+                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Why this score</p>
+                                <p className="mt-1 text-sm font-medium">{lead.topReasons?.length ? lead.topReasons.join(" · ") : lead.reasons.join(" · ")}</p>
+                                <div className="mt-1 flex flex-wrap items-center gap-2">
+                                  <p className="text-xs text-muted-foreground">Tier outcome: {lead.tier.toUpperCase()} · Last activity: {lead.lastActivity}</p>
+                                  <span className={cn("rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", confidenceTone(lead.scoreConfidence))}>
+                                    Confidence: {confidenceLabel(lead.scoreConfidence)}
+                                  </span>
                                 </div>
+                                <p className="mt-1 text-[11px] text-muted-foreground">Confidence reflects data completeness.</p>
+                              </div>
                                 <p className="text-sm text-muted-foreground">{lead.aiExplanation}</p>
+                                {lead.enrichmentMeta?.applied && (
+                                  <div className="space-y-2 rounded-md border bg-background p-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Enrichment changes (prototype)</p>
+                                      <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">
+                                        +{lead.enrichmentMeta.changeCount} fields
+                                      </Badge>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      {lead.enrichmentMeta.changes.slice(0, 6).map((change) => (
+                                        <div key={`${lead.id}-${change.field}-${change.enrichedValue}`} className="rounded border px-2 py-1.5 text-xs">
+                                          <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <p className="font-medium capitalize">{change.field}</p>
+                                            <span className={cn("rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", confidenceToneBySuggestion[change.confidence])}>
+                                              {change.confidence}
+                                            </span>
+                                          </div>
+                                          <p className="text-muted-foreground">
+                                            {(change.originalValue || "empty")} {"->"} {change.enrichedValue}
+                                          </p>
+                                          <p className="text-muted-foreground">{change.reason}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    {lead.enrichmentMeta.changeCount > 6 && (
+                                      <p className="text-[11px] text-muted-foreground">
+                                        +{lead.enrichmentMeta.changeCount - 6} more changes
+                                      </p>
+                                    )}
+                                    <p className="text-[11px] text-muted-foreground">
+                                      Enrichment is simulated and session-only in this prototype.
+                                    </p>
+                                  </div>
+                                )}
                                 <div className="grid gap-2 md:grid-cols-2">
                                   {groupedBreakdown.map((section) => (
                                     <div key={`${lead.id}-${section.group}`} className="space-y-1.5 rounded-md border bg-background p-2">
@@ -611,6 +1141,7 @@ const Dashboard = () => {
                                     </div>
                                   ))}
                                 </div>
+                                <p className="text-[11px] text-muted-foreground">Grouped by engagement, fit, recency, and source.</p>
                               </TableCell>
                             </TableRow>
                           </CollapsibleContent>
@@ -631,6 +1162,32 @@ const Dashboard = () => {
           </>
         )}
       </div>
+      <GuidedTourOverlay
+        open={tourOpen}
+        steps={tourSteps}
+        stepIndex={tourStepIndex}
+        onClose={() => setTourOpen(false)}
+        onPrev={() => {
+          setTourStepIndex((current) => Math.max(0, current - 1));
+        }}
+        onNext={() => {
+          const scenarioId = demoSession.activeScenarioId ?? "high_intent_inbound";
+          const nextStep = tourStepIndex + 1;
+          if (nextStep >= tourSteps.length) {
+            markTourCompleted(scenarioId);
+            setDemoSession(loadDemoSessionState());
+            trackPrototypeEvent("tour_completed", { scenarioId });
+            setTourOpen(false);
+            return;
+          }
+          setTourStepIndex(nextStep);
+          trackPrototypeEvent("tour_step_viewed", {
+            scenarioId,
+            step: tourSteps[nextStep].id,
+            stepIndex: nextStep,
+          });
+        }}
+      />
     </DashboardShell>
   );
 };

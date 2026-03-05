@@ -5,12 +5,27 @@ export interface LeadScoreBreakdown {
   group?: "engagement" | "fit" | "recency" | "source";
 }
 
+export interface LeadEnrichmentChange {
+  field: string;
+  originalValue: string;
+  enrichedValue: string;
+  confidence: "low" | "medium" | "high";
+  reason: string;
+}
+
+export interface LeadEnrichmentMeta {
+  applied: boolean;
+  changeCount: number;
+  changes: LeadEnrichmentChange[];
+}
+
 export type Lead = {
   id: number;
   rank: number;
   name: string;
   company: string;
   score: number;
+  scoreConfidence?: "low" | "medium" | "high";
   tier: "hot" | "warm" | "cold";
   reasons: string[];
   topReasons?: string[];
@@ -19,6 +34,7 @@ export type Lead = {
   email: string;
   aiExplanation: string;
   scoreBreakdown: LeadScoreBreakdown[];
+  enrichmentMeta?: LeadEnrichmentMeta;
   scoredAt: string;
   scoreVersion: string;
 };

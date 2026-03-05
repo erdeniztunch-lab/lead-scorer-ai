@@ -56,6 +56,7 @@ export interface ScoreResult {
   contributions: ScoreContribution[];
   topReasons: string[];
   explanation: string;
+  scoreConfidence: "low" | "medium" | "high";
 }
 
 const SIGNAL_LABELS: Record<string, string> = {
@@ -335,7 +336,12 @@ function inferSignalInput(baseLead: Lead): SignalInput {
 export function buildTopReasons(contributions: ScoreContribution[]): string[] {
   return contributions
     .filter((item) => item.value > 0)
-    .sort((a, b) => b.value - a.value)
+    .sort((a, b) => {
+      if (b.value !== a.value) {
+        return b.value - a.value;
+      }
+      return a.label.localeCompare(b.label);
+    })
     .slice(0, 2)
     .map((item) => item.label);
 }
@@ -348,6 +354,35 @@ export function buildExplanation(
   const top = buildTopReasons(contributions);
   const reasonText = top.length > 0 ? top.join(" and ") : "baseline profile signals";
   return `${lead.name} at ${lead.company} is ranked as ${tier.toUpperCase()} based on ${reasonText}. Prioritize follow-up according to this signal mix.`;
+}
+
+export function deriveScoreConfidence(input: SignalInput): "low" | "medium" | "high" {
+  let weightedScore = 0;
+
+  const hasNumber = (value: number | undefined) => value !== undefined && Number.isFinite(value);
+  const hasPositiveNumber = (value: number | undefined) => hasNumber(value) && (value ?? 0) > 0;
+
+  if (hasPositiveNumber(input.emailOpens)) weightedScore += 1;
+  if (hasPositiveNumber(input.pageViews)) weightedScore += 1;
+
+  if (hasPositiveNumber(input.emailClicks)) {
+    weightedScore += 2;
+  }
+
+  if (input.demoRequested === true) {
+    weightedScore += 2;
+  }
+
+  if (input.industryMatch === true) weightedScore += 1;
+  if (input.companySizeFit === true) weightedScore += 1;
+  if (input.budgetFit === true) weightedScore += 1;
+
+  if (input.source.trim().length > 0) weightedScore += 1;
+  if (input.lastActivity.trim().length > 0) weightedScore += 1;
+
+  if (weightedScore >= 7) return "high";
+  if (weightedScore >= 4) return "medium";
+  return "low";
 }
 
 export function scoreLead(input: SignalInput, config: ScoringConfig): ScoreResult {
@@ -433,8 +468,9 @@ export function scoreLead(input: SignalInput, config: ScoringConfig): ScoreResul
   const tier = deriveTier(score, config.thresholds);
   const topReasons = buildTopReasons(contributions);
   const explanation = buildExplanation({ name: input.name, company: input.company }, contributions, tier);
+  const scoreConfidence = deriveScoreConfidence(input);
 
-  return { score, tier, contributions, topReasons, explanation };
+  return { score, tier, contributions, topReasons, explanation, scoreConfidence };
 }
 
 export function scoreLeads(leads: Lead[], config: ScoringConfig): Lead[] {
@@ -452,6 +488,7 @@ export function scoreLeads(leads: Lead[], config: ScoringConfig): Lead[] {
         reasons: result.topReasons,
         topReasons: result.topReasons,
         aiExplanation: result.explanation,
+        scoreConfidence: result.scoreConfidence,
         scoreBreakdown: result.contributions.map((item) => ({
           key: item.key,
           label: item.label,

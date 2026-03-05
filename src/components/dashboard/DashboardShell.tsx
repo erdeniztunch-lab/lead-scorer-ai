@@ -1,6 +1,8 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/dashboard/AppSidebar";
+import { DemoControlBar } from "@/components/demo/DemoControlBar";
+import { loadDemoSessionState, type DemoScenarioId } from "@/lib/demoStore";
 
 interface DashboardShellProps {
   title: string;
@@ -8,6 +10,21 @@ interface DashboardShellProps {
 }
 
 export function DashboardShell({ title, children }: DashboardShellProps) {
+  const [demoEnabled, setDemoEnabled] = useState(() => loadDemoSessionState().enabled);
+  const [activeScenarioId, setActiveScenarioId] = useState<DemoScenarioId>(
+    () => loadDemoSessionState().activeScenarioId ?? "high_intent_inbound",
+  );
+
+  useEffect(() => {
+    const sync = () => {
+      const next = loadDemoSessionState();
+      setDemoEnabled(next.enabled);
+      setActiveScenarioId(next.activeScenarioId ?? "high_intent_inbound");
+    };
+    window.addEventListener("lead-scorer:demo-session-updated", sync);
+    return () => window.removeEventListener("lead-scorer:demo-session-updated", sync);
+  }, []);
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-gradient-to-b from-background to-muted/20">
@@ -22,6 +39,12 @@ export function DashboardShell({ title, children }: DashboardShellProps) {
               </div>
             </div>
           </header>
+          <DemoControlBar
+            enabled={demoEnabled}
+            onEnabledChange={setDemoEnabled}
+            activeScenarioId={activeScenarioId}
+            onScenarioChange={setActiveScenarioId}
+          />
           <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
         </div>
       </div>
