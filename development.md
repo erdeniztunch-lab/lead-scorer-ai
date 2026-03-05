@@ -858,3 +858,124 @@ Teknik olmayan birinin bile anlayabilecegi dilde yazilir.
 
 ### Vizyon etkisi
 - Leads tablosu daha hafif ve hizli okunur hale geldi; karar odagi daha netlesti.
+
+---
+
+## 2026-03-05 - Leads UX Simplification Phase 2 Completed (Action Hierarchy Refactor)
+
+### Neyi degistirdik?
+- Lead satirinda tek primary aksiyon olarak `Contacted` birakildi.
+- `Snooze 24h` ve `Pin/Unpin` aksiyonlari yeni `More` overflow menu altina tasindi.
+- Dusuk oncelikli iletisim aksiyonlari sadeletildi; satirda sadece email ikon aksiyonu birakildi.
+
+### Neden degistirdik?
+- Aksiyon kalabaligini azaltip kullanicinin dogru birincil aksiyonu daha hizli secmesi icin.
+- Yanlis tiklama riskini dusurmek ve row'u daha sade tutmak icin.
+
+### Bu degisiklik nasil calisiyor?
+- `Dashboard.tsx` action hucresi artik:
+  - ghost `Email` butonu
+  - primary `Contacted` butonu
+  - `More` butonu (overflow ac/kapa)
+- Overflow menu icinde:
+  - `Snooze 24h`
+  - `Pin/Unpin`
+- Mevcut keyboard kisayollari (`c/s/p`) korunur; sadece gorsel aksiyon hiyerarsisi degisti.
+
+### Vizyon etkisi
+- Leads satiri artik "tek ana karar + ikincil secenekler" modeline gecti; operasyon hizi ve zihinsel netlik artti.
+
+---
+
+## 2026-03-05 - Leads UX Simplification Phase 3 Completed (Filter IA Simplification)
+
+### Neyi degistirdik?
+- Queue filter alanini iki seviyeye ayirdik:
+  - Quick presets (her zaman gorunur)
+  - Advanced filters (collapsible)
+- Search, tier ve quality filtrelerini advanced bolume tasidik.
+- Tek bir `Reset filters` aksiyonu ile tum filtre durumunu sifirlayan ortak fonksiyon ekledik.
+
+### Neden degistirdik?
+- Kullanici filtre panelini ilk goruste daha hizli anlayabilsin diye.
+- Once hizli presetle baslayip sadece gerekince detay filtrelere inmek icin.
+
+### Bu degisiklik nasil calisiyor?
+- `Dashboard.tsx` icinde `advancedFiltersOpen` state'i ile advanced blok ac/kapa kontrol ediliyor.
+- Preset butonlari ustte ayni hizda calismaya devam ediyor.
+- Advanced aktifse kucuk bir `Advanced active` rozet sinyali gorunuyor.
+- Reset aksiyonu search, tier, quality, preset ve advanced panel durumunu birlikte sifirliyor.
+
+### Vizyon etkisi
+- Leads Work Mode filtre deneyimi daha az zihinsel yukle calisiyor; triage akisina daha hizli giris sagliyor.
+
+---
+
+## 2026-03-05 - Leads UX Simplification Phase 4 Completed (Expanded Detail Re-architecture)
+
+### Neyi degistirdik?
+- Expanded detail panel'i karar odakli 3 katmana cevirdik:
+  - Why this score (kisa)
+  - Recommended next action
+  - Details (AI explanation + enrichment + grouped breakdown)
+- `Recommended next action` karti eklendi ve lead durumuna gore dinamik hale getirildi.
+- Tekrar eden mikro metinler temizlendi, detaylar secondary seviyeye indirildi.
+
+### Neden degistirdik?
+- Expanded panel acildiginda kullanici once "ne yapmaliyim" cevabini gorsun diye.
+- Bilgi yukunu korurken karar hizini artirmak icin.
+
+### Bu degisiklik nasil calisiyor?
+- Yeni `getNextActionRecommendation(...)` helper'i, lead status + SLA + tier verisine gore aksiyon onerisi uretiyor.
+- Oneri karti renk tonu ile aciliyet seviyesini da gosteriyor.
+- Enrichment ve grouped breakdown detaylari aynen korunuyor ama altta "details" katmaninda sunuluyor.
+
+### Vizyon etkisi
+- Expanded panel artik sadece "aciklama" degil, aktif operasyon karari verdirmeye odakli bir panel gibi calisiyor.
+
+---
+
+## 2026-03-05 - Leads UX Simplification Phase 5 Completed (Visual Hierarchy & Microcopy Polish)
+
+### Neyi degistirdik?
+- Filter kartinda spacing ritmini sikilastirdik ve advanced kontrol gorunumunu daha sakin hale getirdik.
+- Shortcut satirini kisalttik (`Keys: j/k, Enter, c/s/p.`).
+- Row secondary bilgi satirini daha dusuk kontrasta cektik (`Conf · Enriched · Pinned`).
+- `More` aksiyonunu ghost seviyesine alarak primary `Contacted` butonunu daha baskin yaptik.
+- Expanded panelde details katmaninin border/zemin kontrastini yumusattik.
+
+### Neden degistirdik?
+- Karar sinyalleri disindaki bilgilerin gorsel gurultusunu azaltmak icin.
+- Ekrani daha sakin ve taranabilir hale getirmek icin.
+
+### Bu degisiklik nasil calisiyor?
+- Ana karar elemanlari (score/tier/status/SLA/Contacted) ayni kaldi ama daha net odaklandi.
+- Ikincil bilgiler ve detay katmanlari daha soft tonlarla arka plana alindi.
+- Filtre bolumu "hizli basla, gerekirse derinles" modeline daha uyumlu bir ritme kavustu.
+
+### Vizyon etkisi
+- Leads ekrani yetenek kaybetmeden daha olgun bir operasyon paneli hissi veriyor; kullanici daha az zihinsel yukle calisiyor.
+
+---
+
+## 2026-03-05 - Leads UX Simplification Phase 6 Completed (QA, Accessibility, Regression)
+
+### Neyi degistirdik?
+- Phase 1-5 sonrasinda QA kapanisi yapildi.
+- Row `More` menusu icin erisilebilirlik/etkilesim guvenligi arttirildi:
+  - `aria-haspopup="menu"`
+  - menu ve menuitem rollerinin eklenmesi
+  - dis alana tiklandiginda kapanma
+  - `Esc` ile kapanma
+
+### Neden degistirdik?
+- Workflow sade kalirken klavye ve odak deneyimini daha guvenli hale getirmek icin.
+- Regression riskini son fazda teknik olarak kapatmak icin.
+
+### Bu degisiklik nasil calisiyor?
+- Menu acikken `document` seviyesinde pointer ve keydown listener calisiyor.
+- Kullanici disariya tiklarsa veya `Esc` basarsa menu kapaniyor.
+- Aksiyon davranislari (Contacted/Snooze/Pin) ayni sekilde calismaya devam ediyor.
+
+### Vizyon etkisi
+- Leads UX simplification cikisi artik sadece sade degil, ayni zamanda daha dayanikli ve erisilebilir bir operasyon deneyimi sunuyor.

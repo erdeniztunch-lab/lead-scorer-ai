@@ -149,11 +149,12 @@ Tasks:
 Definition of Done:
 - One obvious primary action per row.
 
-Status: Not Started  
-Owner: TBD  
-Date: TBD  
-Validation Result: Pending  
-Open Issues: None
+Status: Completed  
+Owner: Codex  
+Date: 2026-03-05  
+Validation Result: Implemented (single primary row action + compact overflow for secondary actions)  
+Open Issues:
+- Filter complexity remains and is covered in Phase 3.
 
 ---
 
@@ -172,11 +173,12 @@ Tasks:
 Definition of Done:
 - Users can begin with one click using presets, then refine only when needed.
 
-Status: Not Started  
-Owner: TBD  
-Date: TBD  
-Validation Result: Pending  
-Open Issues: None
+Status: Completed  
+Owner: Codex  
+Date: 2026-03-05  
+Validation Result: Implemented (quick presets + collapsible advanced filters + unified reset)  
+Open Issues:
+- Expanded panel architecture still pending (Phase 4).
 
 ---
 
@@ -197,11 +199,12 @@ Tasks:
 Definition of Done:
 - Action decision can be made in first viewport of expanded content.
 
-Status: Not Started  
-Owner: TBD  
-Date: TBD  
-Validation Result: Pending  
-Open Issues: None
+Status: Completed  
+Owner: Codex  
+Date: 2026-03-05  
+Validation Result: Implemented (decision-first expanded panel with recommended next action)  
+Open Issues:
+- Visual spacing/microcopy fine-tuning remains for Phase 5.
 
 ---
 
@@ -222,11 +225,12 @@ Tasks:
 Definition of Done:
 - Screen feels cleaner while preserving workflow power.
 
-Status: Not Started  
-Owner: TBD  
-Date: TBD  
-Validation Result: Pending  
-Open Issues: None
+Status: Completed  
+Owner: Codex  
+Date: 2026-03-05  
+Validation Result: Implemented (visual hierarchy tightened, secondary signals softened, microcopy compressed)  
+Open Issues:
+- Final UX quality gate remains for Phase 6.
 
 ---
 
@@ -249,11 +253,12 @@ Tasks:
 Definition of Done:
 - UX goals met and no regressions in core lead workflow.
 
-Status: Not Started  
-Owner: TBD  
-Date: TBD  
-Validation Result: Pending  
-Open Issues: None
+Status: Completed  
+Owner: Codex  
+Date: 2026-03-05  
+Validation Result: Passed (`npx tsc --noEmit`, `npm run build`) + row action menu accessibility hardening  
+Open Issues:
+- Optional manual responsive sweep (320/375/768/1024/1440) can be re-run before release freeze.
 
 ## Public APIs / Interfaces / Types Impact
 - No route changes.

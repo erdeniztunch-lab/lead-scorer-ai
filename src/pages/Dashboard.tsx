@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, CheckCircle2, Clock3, Download, Filter, Flame, Layers3, Linkedin, Mail, Phone, Search, Target, Upload, XCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2, Clock3, Download, Filter, Flame, Layers3, Mail, MoreHorizontal, Search, Target, Upload, XCircle } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DemoReadinessPanel } from "@/components/demo/DemoReadinessPanel";
 import { GuidedTourOverlay } from "@/components/demo/GuidedTourOverlay";
@@ -163,6 +163,35 @@ function slaLabel(state: ReturnType<typeof getSlaState>) {
   return "On track";
 }
 
+function getNextActionRecommendation(lead: Lead, status: LeadStatus, slaState: ReturnType<typeof getSlaState>) {
+  if (status === "contacted") {
+    return {
+      title: "Move to follow-up cadence",
+      detail: "This lead is already contacted. Keep momentum with a clear next touchpoint.",
+      tone: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    };
+  }
+  if (status === "snoozed") {
+    return {
+      title: "Resume after snooze window",
+      detail: "Wait until snooze expires, then review score signals before re-engaging.",
+      tone: "border-amber-200 bg-amber-50 text-amber-700",
+    };
+  }
+  if (lead.tier === "hot" && slaState === "overdue") {
+    return {
+      title: "Contact today (high urgency)",
+      detail: "Hot lead with delayed response window. Prioritize this outreach in this session.",
+      tone: "border-red-200 bg-red-50 text-red-700",
+    };
+  }
+  return {
+    title: "Review and contact in this session",
+    detail: "Use the score reasons to personalize outreach and move this lead forward quickly.",
+    tone: "border-sky-200 bg-sky-50 text-sky-700",
+  };
+}
+
 function downloadIssuesCsv(issues: ImportIssue[]) {
   const sanitizeCell = (value: string) => {
     const normalized = value.replace(/"/g, '""');
@@ -221,9 +250,11 @@ const Dashboard = () => {
   const [tierFilter, setTierFilter] = useState("all");
   const [qualityProfile, setQualityProfile] = useState<QualityProfile>("all");
   const [workflowPreset, setWorkflowPreset] = useState<WorkflowPreset>("none");
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [leadUiState, setLeadUiState] = useState<LeadUIStateMap>(() => loadLeadUiState());
+  const [openRowMenuLeadId, setOpenRowMenuLeadId] = useState<number | null>(null);
   const [preview, setPreview] = useState<ImportPreviewResponse | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [enrichmentSuggestions, setEnrichmentSuggestions] = useState<EnrichmentSuggestion[]>([]);
@@ -338,6 +369,8 @@ const Dashboard = () => {
     return next;
   }, [guestLeads, qualityProfile]);
 
+  const hasAdvancedFiltersActive = search.trim().length > 0 || tierFilter !== "all" || qualityProfile !== "all";
+
   const applyWorkflowPreset = (preset: WorkflowPreset) => {
     setWorkflowPreset(preset);
     setPage(1);
@@ -348,6 +381,16 @@ const Dashboard = () => {
     } else if (preset === "high_intent_fit") {
       setQualityProfile("high_intent");
     }
+  };
+
+  const resetAllFilters = () => {
+    setPage(1);
+    setSearch("");
+    setTierFilter("all");
+    setQualityProfile("all");
+    setWorkflowPreset("none");
+    setAdvancedFiltersOpen(false);
+    trackPrototypeEvent("filter_used", { filter: "reset", value: "all" });
   };
 
   const fetchLeads = () => {
@@ -469,6 +512,27 @@ const Dashboard = () => {
     if (expanded === null) return;
     trackPrototypeEvent("lead_expanded", { leadId: expanded });
   }, [expanded]);
+
+  useEffect(() => {
+    if (openRowMenuLeadId === null) return;
+
+    const onDocumentPointerDown = () => {
+      setOpenRowMenuLeadId(null);
+    };
+
+    const onDocumentKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenRowMenuLeadId(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", onDocumentPointerDown);
+    document.addEventListener("keydown", onDocumentKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onDocumentPointerDown);
+      document.removeEventListener("keydown", onDocumentKeyDown);
+    };
+  }, [openRowMenuLeadId]);
 
   useEffect(() => {
     if (!importer.csvRows.length) {
@@ -902,10 +966,10 @@ const Dashboard = () => {
             </div>
 
             <Card className="border-dashed">
-              <CardContent className="space-y-3 p-4">
+              <CardContent className="space-y-2.5 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="inline-flex items-center gap-2 text-sm font-medium"><Filter className="h-4 w-4" />Queue Filters</p>
-                  <p className="text-xs text-muted-foreground">{qualityProfileMeta[qualityProfile]} · {workflowPresetLabel[workflowPreset]}</p>
+                  <p className="text-xs text-muted-foreground">Preset: {workflowPresetLabel[workflowPreset]} · {qualityProfileMeta[qualityProfile]}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button
@@ -930,59 +994,63 @@ const Dashboard = () => {
                     High intent + fit
                   </Button>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="relative">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      className="w-60 max-w-[75vw] pl-8"
-                      placeholder="Search by name, company, email"
-                      value={search}
-                      onChange={(event) => {
-                        setPage(1);
-                        setSearch(event.target.value);
-                      }}
-                    />
+                <Collapsible open={advancedFiltersOpen} onOpenChange={(isOpen) => setAdvancedFiltersOpen(isOpen)}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <CollapsibleTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        {advancedFiltersOpen ? "Hide advanced filters" : "Advanced filters"}
+                      </Button>
+                    </CollapsibleTrigger>
+                    {hasAdvancedFiltersActive && (
+                      <Badge variant="outline" className="border-border/70 bg-muted/40 text-xs text-muted-foreground">Advanced active</Badge>
+                    )}
                   </div>
-                  <Select value={tierFilter} onValueChange={(value) => { setPage(1); setTierFilter(value); trackPrototypeEvent("filter_used", { filter: "tier", value }); }}>
-                    <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All tiers</SelectItem>
-                      <SelectItem value="hot">Hot</SelectItem>
-                      <SelectItem value="warm">Warm</SelectItem>
-                      <SelectItem value="cold">Cold</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={qualityProfile}
-                    onValueChange={(value) => {
-                      setPage(1);
-                      setQualityProfile(value as QualityProfile);
-                      trackPrototypeEvent("filter_used", { filter: "qualityProfile", value });
-                    }}
-                  >
-                    <SelectTrigger className="w-56 max-w-[75vw]"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Lead quality: All</SelectItem>
-                      <SelectItem value="high_intent">Lead quality: High intent</SelectItem>
-                      <SelectItem value="balanced_pipeline">Lead quality: Balanced pipeline</SelectItem>
-                      <SelectItem value="volume_mode">Lead quality: Volume mode</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setPage(1);
-                      setSearch("");
-                      setTierFilter("all");
-                      setQualityProfile("all");
-                      setWorkflowPreset("none");
-                      trackPrototypeEvent("filter_used", { filter: "reset", value: "all" });
-                    }}
-                  >
-                    Reset
-                  </Button>
-                </div>
-                <p className="text-[11px] text-muted-foreground">Shortcuts: j/k navigate, Enter expand, c contacted, s snooze, p pin.</p>
+                  <CollapsibleContent className="space-y-2 pt-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="relative">
+                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          className="w-60 max-w-[75vw] pl-8"
+                          placeholder="Search by name, company, email"
+                          value={search}
+                          onChange={(event) => {
+                            setPage(1);
+                            setSearch(event.target.value);
+                          }}
+                        />
+                      </div>
+                      <Select value={tierFilter} onValueChange={(value) => { setPage(1); setTierFilter(value); trackPrototypeEvent("filter_used", { filter: "tier", value }); }}>
+                        <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All tiers</SelectItem>
+                          <SelectItem value="hot">Hot</SelectItem>
+                          <SelectItem value="warm">Warm</SelectItem>
+                          <SelectItem value="cold">Cold</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={qualityProfile}
+                        onValueChange={(value) => {
+                          setPage(1);
+                          setQualityProfile(value as QualityProfile);
+                          trackPrototypeEvent("filter_used", { filter: "qualityProfile", value });
+                        }}
+                      >
+                        <SelectTrigger className="w-56 max-w-[75vw]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Lead quality: All</SelectItem>
+                          <SelectItem value="high_intent">Lead quality: High intent</SelectItem>
+                          <SelectItem value="balanced_pipeline">Lead quality: Balanced pipeline</SelectItem>
+                          <SelectItem value="volume_mode">Lead quality: Volume mode</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button variant="outline" onClick={resetAllFilters}>
+                        Reset filters
+                      </Button>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+                <p className="text-[11px] text-muted-foreground">Keys: j/k, Enter, c/s/p.</p>
               </CardContent>
             </Card>
 
@@ -1008,6 +1076,7 @@ const Dashboard = () => {
                     const effectiveStatus: LeadStatus =
                       uiState?.status === "contacted" ? "contacted" : isLeadSnoozed ? "snoozed" : "new";
                     const slaState = getSlaState(lead, uiState);
+                    const nextAction = getNextActionRecommendation(lead, effectiveStatus, slaState);
 
                     return (
                       <Collapsible key={lead.id} open={expanded === lead.id} onOpenChange={(isOpen) => setExpanded(isOpen ? lead.id : null)} asChild>
@@ -1029,7 +1098,7 @@ const Dashboard = () => {
                                   <span className={cn("rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", slaTone(slaState))}>
                                     {slaLabel(slaState)}
                                   </span>
-                                  <p className="text-[11px] text-muted-foreground">
+                                  <p className="text-[10px] text-muted-foreground/80">
                                     Conf {confidenceLabel(lead.scoreConfidence)}
                                     {lead.enrichmentMeta?.applied ? ` · Enriched +${lead.enrichmentMeta.changeCount}` : ""}
                                     {uiState?.pinned ? " · Pinned" : ""}
@@ -1052,19 +1121,58 @@ const Dashboard = () => {
                                 <Badge variant="outline" className={cn("capitalize", tierTone(lead.tier))}>{lead.tier}</Badge>
                               </TableCell>
                               <TableCell className="text-right">
-                                <div className="inline-flex flex-wrap justify-end gap-1">
+                                <div className="relative inline-flex flex-wrap items-center justify-end gap-1">
                                   <Button variant="ghost" size="icon" title="Email lead" aria-label={`Email ${lead.name}`} onClick={(event) => event.stopPropagation()}><Mail className="h-4 w-4" /></Button>
-                                  <Button variant="ghost" size="icon" title="Call lead" aria-label={`Call ${lead.name}`} onClick={(event) => event.stopPropagation()}><Phone className="h-4 w-4" /></Button>
-                                  <Button variant="ghost" size="icon" title="Open LinkedIn" aria-label={`Open LinkedIn for ${lead.name}`} onClick={(event) => event.stopPropagation()}><Linkedin className="h-4 w-4" /></Button>
-                                  <Button size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); markLeadContacted(lead.id); }}>
+                                  <Button size="sm" onClick={(event) => { event.stopPropagation(); markLeadContacted(lead.id); }}>
                                     Contacted
                                   </Button>
-                                  <Button size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); snoozeLead24h(lead.id); }}>
-                                    Snooze 24h
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    aria-label={`More actions for ${lead.name}`}
+                                    aria-haspopup="menu"
+                                    aria-expanded={openRowMenuLeadId === lead.id}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setOpenRowMenuLeadId((current) => (current === lead.id ? null : lead.id));
+                                    }}
+                                  >
+                                    <MoreHorizontal className="h-4 w-4" />
+                                    More
                                   </Button>
-                                  <Button size="sm" variant={uiState?.pinned ? "secondary" : "outline"} onClick={(event) => { event.stopPropagation(); toggleLeadPin(lead.id); }}>
-                                    {uiState?.pinned ? "Unpin" : "Pin"}
-                                  </Button>
+                                  {openRowMenuLeadId === lead.id && (
+                                    <div
+                                      role="menu"
+                                      className="absolute right-0 top-full z-20 mt-1 w-36 space-y-1 rounded-md border bg-background p-1 shadow-md"
+                                      onClick={(event) => event.stopPropagation()}
+                                      onPointerDown={(event) => event.stopPropagation()}
+                                    >
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        role="menuitem"
+                                        className="w-full justify-start"
+                                        onClick={() => {
+                                          snoozeLead24h(lead.id);
+                                          setOpenRowMenuLeadId(null);
+                                        }}
+                                      >
+                                        Snooze 24h
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        role="menuitem"
+                                        className="w-full justify-start"
+                                        onClick={() => {
+                                          toggleLeadPin(lead.id);
+                                          setOpenRowMenuLeadId(null);
+                                        }}
+                                      >
+                                        {uiState?.pinned ? "Unpin" : "Pin"}
+                                      </Button>
+                                    </div>
+                                  )}
                                 </div>
                               </TableCell>
                             </TableRow>
@@ -1073,67 +1181,74 @@ const Dashboard = () => {
                             <TableRow>
                               <TableCell colSpan={6} className="space-y-3 bg-muted/25">
                                 <div className="rounded-md border bg-background p-3">
-                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Why this score</p>
-                                <p className="mt-1 text-sm font-medium">{lead.topReasons?.length ? lead.topReasons.join(" · ") : lead.reasons.join(" · ")}</p>
-                                <div className="mt-1 flex flex-wrap items-center gap-2">
-                                  <p className="text-xs text-muted-foreground">Tier outcome: {lead.tier.toUpperCase()} · Last activity: {lead.lastActivity}</p>
-                                  <span className={cn("rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", confidenceTone(lead.scoreConfidence))}>
-                                    Confidence: {confidenceLabel(lead.scoreConfidence)}
-                                  </span>
-                                </div>
-                                <p className="mt-1 text-[11px] text-muted-foreground">Confidence reflects data completeness.</p>
-                              </div>
-                                <p className="text-sm text-muted-foreground">{lead.aiExplanation}</p>
-                                {lead.enrichmentMeta?.applied && (
-                                  <div className="space-y-2 rounded-md border bg-background p-3">
-                                    <div className="flex flex-wrap items-center justify-between gap-2">
-                                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Enrichment changes (prototype)</p>
-                                      <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">
-                                        +{lead.enrichmentMeta.changeCount} fields
-                                      </Badge>
-                                    </div>
-                                    <div className="space-y-1.5">
-                                      {lead.enrichmentMeta.changes.slice(0, 6).map((change) => (
-                                        <div key={`${lead.id}-${change.field}-${change.enrichedValue}`} className="rounded border px-2 py-1.5 text-xs">
-                                          <div className="flex flex-wrap items-center justify-between gap-2">
-                                            <p className="font-medium capitalize">{change.field}</p>
-                                            <span className={cn("rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", confidenceToneBySuggestion[change.confidence])}>
-                                              {change.confidence}
-                                            </span>
-                                          </div>
-                                          <p className="text-muted-foreground">
-                                            {(change.originalValue || "empty")} {"->"} {change.enrichedValue}
-                                          </p>
-                                          <p className="text-muted-foreground">{change.reason}</p>
-                                        </div>
-                                      ))}
-                                    </div>
-                                    {lead.enrichmentMeta.changeCount > 6 && (
-                                      <p className="text-[11px] text-muted-foreground">
-                                        +{lead.enrichmentMeta.changeCount - 6} more changes
-                                      </p>
-                                    )}
-                                    <p className="text-[11px] text-muted-foreground">
-                                      Enrichment is simulated and session-only in this prototype.
-                                    </p>
+                                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Why this score</p>
+                                  <p className="mt-1 text-sm font-medium">{lead.topReasons?.length ? lead.topReasons.join(" · ") : lead.reasons.join(" · ")}</p>
+                                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                                    <p className="text-xs text-muted-foreground">Tier: {lead.tier.toUpperCase()} · Last activity: {lead.lastActivity}</p>
+                                    <span className={cn("rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", confidenceTone(lead.scoreConfidence))}>
+                                      Confidence: {confidenceLabel(lead.scoreConfidence)}
+                                    </span>
                                   </div>
-                                )}
-                                <div className="grid gap-2 md:grid-cols-2">
-                                  {groupedBreakdown.map((section) => (
-                                    <div key={`${lead.id}-${section.group}`} className="space-y-1.5 rounded-md border bg-background p-2">
-                                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{section.label}</p>
-                                      <div className="space-y-1">
-                                        {section.items.map((item) => (
-                                          <div key={`${lead.id}-${section.group}-${item.key}`} className="flex items-center justify-between rounded border bg-background px-2 py-1 text-xs">
-                                            <span className="text-muted-foreground">{item.label}</span>
-                                            <span className={cn("font-semibold", item.value < 0 && "text-destructive")}>{item.value >= 0 ? `+${item.value}` : item.value}</span>
+                                </div>
+
+                                <div className={cn("space-y-1 rounded-md border p-3", nextAction.tone)}>
+                                  <p className="text-xs font-medium uppercase tracking-wide">Recommended next action</p>
+                                  <p className="text-sm font-semibold">{nextAction.title}</p>
+                                  <p className="text-xs">{nextAction.detail}</p>
+                                </div>
+
+                                <div className="space-y-2.5 rounded-md border bg-background p-3">
+                                  <div>
+                                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Details</p>
+                                    <p className="mt-1 text-xs text-muted-foreground">{lead.aiExplanation}</p>
+                                  </div>
+                                  {lead.enrichmentMeta?.applied && (
+                                    <div className="space-y-2 rounded-md border border-border/70 bg-muted/15 p-2.5">
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Enrichment changes (prototype)</p>
+                                        <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">
+                                          +{lead.enrichmentMeta.changeCount} fields
+                                        </Badge>
+                                      </div>
+                                      <div className="space-y-1.5">
+                                        {lead.enrichmentMeta.changes.slice(0, 6).map((change) => (
+                                          <div key={`${lead.id}-${change.field}-${change.enrichedValue}`} className="rounded border bg-background px-2 py-1.5 text-xs">
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                              <p className="font-medium capitalize">{change.field}</p>
+                                              <span className={cn("rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", confidenceToneBySuggestion[change.confidence])}>
+                                                {change.confidence}
+                                              </span>
+                                            </div>
+                                            <p className="text-muted-foreground">
+                                              {(change.originalValue || "empty")} {"->"} {change.enrichedValue}
+                                            </p>
+                                            <p className="text-muted-foreground">{change.reason}</p>
                                           </div>
                                         ))}
                                       </div>
+                                      {lead.enrichmentMeta.changeCount > 6 && (
+                                        <p className="text-[11px] text-muted-foreground">
+                                          +{lead.enrichmentMeta.changeCount - 6} more changes
+                                        </p>
+                                      )}
                                     </div>
-                                  ))}
+                                  )}
+                                  <div className="grid gap-2 md:grid-cols-2">
+                                    {groupedBreakdown.map((section) => (
+                                      <div key={`${lead.id}-${section.group}`} className="space-y-1.5 rounded-md border border-border/70 bg-muted/15 p-2">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{section.label}</p>
+                                        <div className="space-y-1">
+                                          {section.items.map((item) => (
+                                            <div key={`${lead.id}-${section.group}-${item.key}`} className="flex items-center justify-between rounded border bg-background px-2 py-1 text-xs">
+                                              <span className="text-muted-foreground">{item.label}</span>
+                                              <span className={cn("font-semibold", item.value < 0 && "text-destructive")}>{item.value >= 0 ? `+${item.value}` : item.value}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
-                                <p className="text-[11px] text-muted-foreground">Grouped by engagement, fit, recency, and source.</p>
                               </TableCell>
                             </TableRow>
                           </CollapsibleContent>
