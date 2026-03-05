@@ -456,6 +456,7 @@ export function scoreLeads(leads: Lead[], config: ScoringConfig): Lead[] {
           key: item.key,
           label: item.label,
           value: item.value,
+          group: item.group,
         })),
         scoredAt,
         scoreVersion: config.version,

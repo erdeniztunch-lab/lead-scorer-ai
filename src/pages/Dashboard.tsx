@@ -35,6 +35,7 @@ const leadFields = [
 type LeadFieldKey = (typeof leadFields)[number]["key"];
 type WorkMode = "work" | "setup";
 type QualityProfile = "all" | "high_intent" | "balanced_pipeline" | "volume_mode";
+type ContributionGroup = NonNullable<Lead["scoreBreakdown"][number]["group"]>;
 
 interface KpiState {
   totalLeads: number;
@@ -59,6 +60,49 @@ const qualityProfileMeta: Record<QualityProfile, string> = {
   balanced_pipeline: "HOT + WARM leads",
   volume_mode: "Score threshold: 40+",
 };
+
+const contributionGroupOrder: ContributionGroup[] = ["engagement", "fit", "recency", "source"];
+
+const contributionGroupLabel: Record<ContributionGroup, string> = {
+  engagement: "Engagement",
+  fit: "Fit",
+  recency: "Recency",
+  source: "Source",
+};
+
+const fallbackContributionGroupByKey: Record<string, ContributionGroup> = {
+  email_opens: "engagement",
+  email_clicks: "engagement",
+  page_views: "engagement",
+  demo_requested: "engagement",
+  industry_match: "fit",
+  company_size_fit: "fit",
+  budget_fit: "fit",
+  recency: "recency",
+  source_prior: "source",
+};
+
+function groupScoreBreakdown(items: Lead["scoreBreakdown"]) {
+  const grouped = new Map<ContributionGroup | "ungrouped", Lead["scoreBreakdown"]>();
+
+  items.forEach((item) => {
+    const group = item.group ?? fallbackContributionGroupByKey[item.key] ?? "ungrouped";
+    const bucket = grouped.get(group) ?? [];
+    bucket.push(item);
+    grouped.set(group, bucket);
+  });
+
+  const orderedGroups: Array<ContributionGroup | "ungrouped"> = [
+    ...contributionGroupOrder.filter((group) => grouped.has(group)),
+    ...(grouped.has("ungrouped") ? (["ungrouped"] as const) : []),
+  ];
+
+  return orderedGroups.map((group) => ({
+    group,
+    label: group === "ungrouped" ? "Ungrouped" : contributionGroupLabel[group],
+    items: grouped.get(group) ?? [],
+  }));
+}
 
 function tierTone(tier: Lead["tier"]) {
   if (tier === "hot") return "border-red-200 bg-red-50 text-red-700";
@@ -162,7 +206,12 @@ const Dashboard = () => {
         reasons: result.topReasons,
         lastActivity,
         aiExplanation: result.explanation,
-        scoreBreakdown: result.contributions.map((item) => ({ key: item.key, label: item.label, value: item.value })),
+        scoreBreakdown: result.contributions.map((item) => ({
+          key: item.key,
+          label: item.label,
+          value: item.value,
+          group: item.group,
+        })),
         scoredAt: new Date().toISOString(),
         scoreVersion: DEFAULT_SCORING_CONFIG.version,
       };
@@ -501,63 +550,74 @@ const Dashboard = () => {
                 </TableHeader>
                 <TableBody>
                   {isLoadingLeads && <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">Loading leads...</TableCell></TableRow>}
-                  {!isLoadingLeads && leads.map((lead) => (
-                    <Collapsible key={lead.id} open={expanded === lead.id} onOpenChange={(isOpen) => setExpanded(isOpen ? lead.id : null)} asChild>
-                      <>
-                        <CollapsibleTrigger asChild>
-                          <TableRow className="cursor-pointer hover:bg-muted/35" title="Expand lead details">
-                            <TableCell className="text-muted-foreground">{lead.rank}</TableCell>
-                            <TableCell>
-                              <p className="font-medium">{lead.name}</p>
-                              <p className="text-xs text-muted-foreground">{lead.email}</p>
-                            </TableCell>
-                            <TableCell>
-                              <p className="font-medium">{lead.company}</p>
-                              <p className="text-xs text-muted-foreground">{lead.source}</p>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <p className="font-semibold">{lead.score}</p>
-                                <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
-                                  <div className="h-full rounded-full bg-primary" style={{ width: `${lead.score}%` }} />
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={cn("capitalize", tierTone(lead.tier))}>{lead.tier}</Badge>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="inline-flex gap-1">
-                                <Button variant="ghost" size="icon" title="Email lead" aria-label={`Email ${lead.name}`}><Mail className="h-4 w-4" /></Button>
-                                <Button variant="ghost" size="icon" title="Call lead" aria-label={`Call ${lead.name}`}><Phone className="h-4 w-4" /></Button>
-                                <Button variant="ghost" size="icon" title="Open LinkedIn" aria-label={`Open LinkedIn for ${lead.name}`}><Linkedin className="h-4 w-4" /></Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent asChild>
-                          <TableRow>
-                            <TableCell colSpan={6} className="space-y-3 bg-muted/25">
-                              <div className="rounded-md border bg-background p-3">
-                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Why this score</p>
-                                <p className="mt-1 text-sm font-medium">{lead.topReasons?.length ? lead.topReasons.join(" · ") : lead.reasons.join(" · ")}</p>
-                                <p className="mt-1 text-xs text-muted-foreground">Tier outcome: {lead.tier.toUpperCase()} · Last activity: {lead.lastActivity}</p>
-                              </div>
-                              <p className="text-sm text-muted-foreground">{lead.aiExplanation}</p>
-                              <div className="grid gap-1.5 md:grid-cols-2">
-                                {lead.scoreBreakdown.map((item) => (
-                                  <div key={`${lead.id}-${item.key}`} className="flex items-center justify-between rounded border bg-background px-2 py-1 text-xs">
-                                    <span className="text-muted-foreground">{item.label}</span>
-                                    <span className={cn("font-semibold", item.value < 0 && "text-destructive")}>{item.value >= 0 ? `+${item.value}` : item.value}</span>
+                  {!isLoadingLeads && leads.map((lead) => {
+                    const groupedBreakdown = groupScoreBreakdown(lead.scoreBreakdown);
+
+                    return (
+                      <Collapsible key={lead.id} open={expanded === lead.id} onOpenChange={(isOpen) => setExpanded(isOpen ? lead.id : null)} asChild>
+                        <>
+                          <CollapsibleTrigger asChild>
+                            <TableRow className="cursor-pointer hover:bg-muted/35" title="Expand lead details">
+                              <TableCell className="text-muted-foreground">{lead.rank}</TableCell>
+                              <TableCell>
+                                <p className="font-medium">{lead.name}</p>
+                                <p className="text-xs text-muted-foreground">{lead.email}</p>
+                              </TableCell>
+                              <TableCell>
+                                <p className="font-medium">{lead.company}</p>
+                                <p className="text-xs text-muted-foreground">{lead.source}</p>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-semibold">{lead.score}</p>
+                                  <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
+                                    <div className="h-full rounded-full bg-primary" style={{ width: `${lead.score}%` }} />
                                   </div>
-                                ))}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        </CollapsibleContent>
-                      </>
-                    </Collapsible>
-                  ))}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={cn("capitalize", tierTone(lead.tier))}>{lead.tier}</Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="inline-flex gap-1">
+                                  <Button variant="ghost" size="icon" title="Email lead" aria-label={`Email ${lead.name}`}><Mail className="h-4 w-4" /></Button>
+                                  <Button variant="ghost" size="icon" title="Call lead" aria-label={`Call ${lead.name}`}><Phone className="h-4 w-4" /></Button>
+                                  <Button variant="ghost" size="icon" title="Open LinkedIn" aria-label={`Open LinkedIn for ${lead.name}`}><Linkedin className="h-4 w-4" /></Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent asChild>
+                            <TableRow>
+                              <TableCell colSpan={6} className="space-y-3 bg-muted/25">
+                                <div className="rounded-md border bg-background p-3">
+                                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Why this score</p>
+                                  <p className="mt-1 text-sm font-medium">{lead.topReasons?.length ? lead.topReasons.join(" · ") : lead.reasons.join(" · ")}</p>
+                                  <p className="mt-1 text-xs text-muted-foreground">Tier outcome: {lead.tier.toUpperCase()} · Last activity: {lead.lastActivity}</p>
+                                </div>
+                                <p className="text-sm text-muted-foreground">{lead.aiExplanation}</p>
+                                <div className="grid gap-2 md:grid-cols-2">
+                                  {groupedBreakdown.map((section) => (
+                                    <div key={`${lead.id}-${section.group}`} className="space-y-1.5 rounded-md border bg-background p-2">
+                                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{section.label}</p>
+                                      <div className="space-y-1">
+                                        {section.items.map((item) => (
+                                          <div key={`${lead.id}-${section.group}-${item.key}`} className="flex items-center justify-between rounded border bg-background px-2 py-1 text-xs">
+                                            <span className="text-muted-foreground">{item.label}</span>
+                                            <span className={cn("font-semibold", item.value < 0 && "text-destructive")}>{item.value >= 0 ? `+${item.value}` : item.value}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          </CollapsibleContent>
+                        </>
+                      </Collapsible>
+                    );
+                  })}
                   {!isLoadingLeads && leads.length === 0 && <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No leads found.</TableCell></TableRow>}
                 </TableBody>
               </Table>

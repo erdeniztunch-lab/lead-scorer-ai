@@ -2,6 +2,7 @@ export interface LeadScoreBreakdown {
   key: string;
   label: string;
   value: number;
+  group?: "engagement" | "fit" | "recency" | "source";
 }
 
 export type Lead = {
